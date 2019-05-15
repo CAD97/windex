@@ -1,8 +1,8 @@
-//! Sound unchecked indexing using the techniques from [indexing],
-//! but extended to string slices and without pointer or mutability support.
+//! Sound unchecked indexing using the techniques from generative lifetimes,
+//! extended to string slices and without pointer or mutability support.
 //!
-//! Major kudos go to Gankro and especially Bluss for the [indexing] crate,
-//! from which this crate blatantly steals all of its cleverness.
+//! Major kudos go to Gankro and especially Bluss for the original [indexing]
+//! crate, from which this crate blatantly steals all of its cleverness.
 //!
 //! # Basic Structure
 //!

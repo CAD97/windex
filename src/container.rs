@@ -213,7 +213,7 @@ impl<'id, Array: TrustedContainer + ?Sized> ops::Index<ops::RangeFull> for Conta
     type Output = Array::Slice;
 
     fn index(&self, _: ops::RangeFull) -> &Self::Output {
-        &self[Range::from(self.start(), self.end())]
+        &self[Range::<usize, _>::from(self.start(), self.end())]
     }
 }
 

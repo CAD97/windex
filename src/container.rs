@@ -33,7 +33,7 @@ impl<'id, Array: TrustedContainer> Container<'id, Array> {
 }
 
 impl<'id, Array: TrustedContainer + ?Sized> Container<'id, &Array> {
-    pub(crate) fn project(&self) -> &Container<'id, Array> {
+    pub fn project(&self) -> &Container<'id, Array> {
         unsafe { &*(self.array as *const Array as *const Container<'id, Array>) }
     }
 }

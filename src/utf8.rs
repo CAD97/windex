@@ -166,7 +166,7 @@ mod std_impls {
 
     #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
     impl<'id> Container<'id, String> {
-        pub(crate) fn project(&self) -> &Container<'id, str> {
+        pub fn project(&self) -> &Container<'id, str> {
             unsafe { &*(&**self.untrusted() as *const str as *const Container<'id, str>) }
         }
     }

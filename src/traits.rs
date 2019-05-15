@@ -232,7 +232,7 @@ mod std_impls {
 
     #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
     impl<'id, Array: TrustedContainer + ?Sized> Container<'id, Box<Array>> {
-        pub(crate) fn project(&self) -> &Container<'id, Array> {
+        pub fn project(&self) -> &Container<'id, Array> {
             unsafe { &*(&**self.untrusted() as *const Array as *const Container<'id, Array>) }
         }
     }
@@ -283,7 +283,7 @@ mod std_impls {
 
     #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
     impl<'id, T> Container<'id, Vec<T>> {
-        pub(crate) fn project(&self) -> &Container<'id, [T]> {
+        pub fn project(&self) -> &Container<'id, [T]> {
             unsafe { &*(&**self.untrusted() as *const [T] as *const Container<'id, [T]>) }
         }
     }

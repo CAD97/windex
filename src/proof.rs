@@ -1,8 +1,4 @@
-use crate::traits::Idx;
-use {
-    crate::{Index, Range},
-    core::{fmt, marker::PhantomData},
-};
+use core::{fmt, marker::PhantomData};
 
 /// `Id<'id>` is _invariant_ w.r.t. `'id`.
 ///
@@ -40,30 +36,4 @@ impl<Q> ProofAdd for (NonEmpty, Q) {
 }
 impl<Q> ProofAdd for (Unknown, Q) {
     type Sum = Q;
-}
-
-pub trait Provable {
-    type Proof;
-    type WithoutProof: Provable<Proof = Unknown>;
-
-    /// Return a copy of self with the proof parameter set to `Unknown`.
-    fn no_proof(self) -> Self::WithoutProof;
-}
-
-impl<'id, I: Idx, Emptiness> Provable for Index<'id, I, Emptiness> {
-    type Proof = Emptiness;
-    type WithoutProof = Index<'id, I, Unknown>;
-
-    fn no_proof(self) -> Self::WithoutProof {
-        unsafe { Index::new(self.untrusted()) }
-    }
-}
-
-impl<'id, I: Idx, Emptiness> Provable for Range<'id, I, Emptiness> {
-    type Proof = Emptiness;
-    type WithoutProof = Range<'id, I, Unknown>;
-
-    fn no_proof(self) -> Self::WithoutProof {
-        unsafe { Range::new(self.start().untrusted(), self.end().untrusted()) }
-    }
 }

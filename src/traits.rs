@@ -230,7 +230,6 @@ mod std_impls {
         }
     }
 
-    #[cfg(feature = "std")]
     #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
     impl<'id, Array: TrustedContainer + ?Sized> Container<'id, std::boxed::Box<Array>> {
         pub(crate) fn project(&self) -> &Container<'id, Array> {
@@ -282,7 +281,6 @@ mod std_impls {
         }
     }
 
-    #[cfg(feature = "std")]
     #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
     impl<'id, T> Container<'id, std::vec::Vec<T>> {
         pub(crate) fn project(&self) -> &Container<'id, [T]> {

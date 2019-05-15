@@ -2,8 +2,9 @@
 use crate::scope;
 use {
     crate::{
+        container::Container,
         proof::{Id, NonEmpty, ProofAdd, Unknown},
-        traits::Idx,
+        traits::{Idx, TrustedContainer},
     },
     core::{
         cmp, fmt,
@@ -206,6 +207,28 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
         }
     }
 
+    /// If the index is a valid absolute index within this range.
+    pub fn contains_in<Array: TrustedContainer>(
+        &self,
+        index: I,
+        container: &Container<'id, Array>,
+    ) -> Option<Index<'id, I, NonEmpty>> {
+        if index >= self.start().untrusted() && index < self.end().untrusted() {
+            container.vet(index).ok()
+        } else {
+            None
+        }
+    }
+
+    /// If the index is within this range. Provides a nonempty proof.
+    pub fn contains<P>(&self, index: Index<'id, I, P>) -> Option<Index<'id, I, NonEmpty>> {
+        if index.erased() >= self.start().erased() && index.erased() < self.end() {
+            unsafe { Some(Index::new_nonempty(index.untrusted())) }
+        } else {
+            None
+        }
+    }
+
     /// Join together two adjacent ranges.
     /// (They must be exactly touching, non-overlapping, and in order.)
     pub fn join<Q>(
@@ -247,6 +270,25 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
 impl<'id, I: Idx> Range<'id, I, NonEmpty> {
     #[doc(hidden)]
     pub fn observe_proof(&self) {}
+
+    /// Increase the range's start, if the result is still a non-empty range.
+    ///
+    /// `true` if stepped successfully, `false` if the range would be empty.
+    pub fn advance_in<Array: TrustedContainer>(
+        &mut self,
+        container: &Container<'id, Array>,
+    ) -> bool {
+        if let Some(next) = container.advance(self.start()) {
+            if next.erased() < self.end() {
+                *self = unsafe { Range::new_nonempty(next.untrusted(), self.end().untrusted()) };
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
 }
 
 /// # Note

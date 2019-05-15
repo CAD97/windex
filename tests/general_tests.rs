@@ -1,10 +1,10 @@
-use indexing::{scope, Range};
+use indexing::scope;
 
 #[test]
 fn join_add_proof() {
     let data = [1, 2, 3];
     scope(&data[..], move |v| {
-        let r: Range = v.range();
+        let r = v.range::<u32>();
         if let Some(r) = r.nonempty() {
             let (front, back) = r.frontiers();
 

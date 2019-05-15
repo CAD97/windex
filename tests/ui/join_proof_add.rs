@@ -1,4 +1,4 @@
-use indexing::{scope, Range, proof::NonEmpty};
+use indexing::scope;
 
 fn main() {
     let arr1 = [1, 2, 3, 4, 5];
@@ -6,7 +6,6 @@ fn main() {
     scope(&arr1[..], |v| {
         let r = v.range();
         if let Some(r) = r.nonempty() {
-            let r: Range<'_, _, NonEmpty> = r;
             let (front, back) = r.frontiers();
 
             r.start();

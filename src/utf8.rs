@@ -130,7 +130,7 @@ mod std_impls {
         }
 
         unsafe fn get_unchecked(&self, i: usize) -> &Self::Item {
-            <str>::get_unchecked(self, i)
+            <str as TrustedContainer>::get_unchecked(self, i)
         }
 
         unsafe fn slice_unchecked(&self, r: ops::Range<usize>) -> &Self::Slice {
@@ -146,21 +146,21 @@ mod std_impls {
             idx: I,
             container: &Container<'id, String>,
         ) -> Result<Index<'id, I, Unknown>, IndexError> {
-            T::vet(idx, container.project())
+            Character::vet(idx, container.project())
         }
 
         fn after<'id, I: Idx>(
             this: Index<'id, I, NonEmpty>,
             container: &Container<'id, String>,
         ) -> Index<'id, I, Unknown> {
-            T::after(this, container.project())
+            Character::after(this, container.project())
         }
 
         fn advance<'id, I: Idx>(
             this: Index<'id, I, NonEmpty>,
             container: &Container<'id, String>,
         ) -> Option<Index<'id, I, NonEmpty>> {
-            T::advance(this, container.project())
+            Character::advance(this, container.project())
         }
     }
 

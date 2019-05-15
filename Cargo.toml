@@ -22,5 +22,8 @@ default = ["std"]
 std = []
 doc = [] # opt in to #[doc(cfg(...))]
 
+[dev-dependencies]
+trybuild = "1.0.4"
+
 [package.metadata.docs.rs]
 all-features = true

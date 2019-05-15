@@ -117,5 +117,57 @@ unsafe impl TrustedItem<str> for Character {
 
 #[cfg(std)]
 mod std_impls {
-    // String
+    use super::*;
+    use std::string::String;
+
+    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
+    unsafe impl TrustedContainer for String {
+        type Item = Character;
+        type Slice = str;
+
+        fn unit_len(&self) -> usize {
+            self.len()
+        }
+
+        unsafe fn get_unchecked(&self, i: usize) -> &Self::Item {
+            <str>::get_unchecked(self, i)
+        }
+
+        unsafe fn slice_unchecked(&self, r: ops::Range<usize>) -> &Self::Slice {
+            <str>::get_unchecked(self, r)
+        }
+    }
+
+    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
+    unsafe impl TrustedItem<String> for str {
+        type Unit = u8;
+
+        fn vet<'id, I: Idx>(
+            idx: I,
+            container: &Container<'id, String>,
+        ) -> Result<Index<'id, I, Unknown>, IndexError> {
+            T::vet(idx, container.project())
+        }
+
+        fn after<'id, I: Idx>(
+            this: Index<'id, I, NonEmpty>,
+            container: &Container<'id, String>,
+        ) -> Index<'id, I, Unknown> {
+            T::after(this, container.project())
+        }
+
+        fn advance<'id, I: Idx>(
+            this: Index<'id, I, NonEmpty>,
+            container: &Container<'id, String>,
+        ) -> Option<Index<'id, I, NonEmpty>> {
+            T::advance(this, container.project())
+        }
+    }
+
+    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
+    impl<'id> Container<'id, String> {
+        pub(crate) fn project(&self) -> &Container<'id, str> {
+            unsafe { &*(&**self.untrusted() as *const str as *const Container<'id, str>) }
+        }
+    }
 }

@@ -87,3 +87,12 @@ where
     // Rustc will never do such analysis, so we don't care.
     f(unsafe { Container::new(array) })
 }
+
+/// [`scope`], but for a backing container behind a reference
+/// (such as an unsized string slice).
+pub fn scope_ref<Array: TrustedContainer, F, Out>(array: &Array, f: F) -> Out
+where
+    F: for<'id> FnOnce(&'id Container<'id, Array>) -> Out,
+{
+    f(unsafe { &*(array as *const Array as *const Container<'_, Array>) })
+}

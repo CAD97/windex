@@ -1,0 +1,9 @@
+error: borrowed data cannot be stored outside of its closure
+ --> $DIR/basic_branding2.rs:8:28
+  |
+7 |     let _a = scope(&arr1[..], |arr| {
+  |         --                    ----- ...because it cannot outlive this closure
+  |         |
+  |         borrowed data cannot be stored into here...
+8 |         let r: Range = arr.range();        //~ ERROR borrowed data cannot be stored outside of its closure
+  |                            ^^^^^ cannot be stored outside of its closure

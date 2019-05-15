@@ -1,0 +1,61 @@
+error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'id` due to conflicting requirements
+  --> $DIR/basic_branding.rs:27:14
+   |
+27 |             &arr2[r1]; //~ ERROR cannot infer an appropriate lifetime
+   |              ^^^^^^^^
+   |
+note: first, the lifetime cannot outlive the anonymous lifetime #2 defined on the body at 25:24...
+  --> $DIR/basic_branding.rs:25:24
+   |
+25 |       indices(&arr1[..], |arr1, r1| {
+   |  ________________________^
+26 | |         indices(&arr2[..], move |arr2, r2| {
+27 | |             &arr2[r1]; //~ ERROR cannot infer an appropriate lifetime
+28 | |             // &arr1[r2]; //~ ERROR cannot infer an appropriate lifetime
+29 | |         });
+30 | |     });
+   | |_____^
+note: ...but the lifetime must also be valid for the anonymous lifetime #2 defined on the body at 26:28...
+  --> $DIR/basic_branding.rs:26:28
+   |
+26 |           indices(&arr2[..], move |arr2, r2| {
+   |  ____________________________^
+27 | |             &arr2[r1]; //~ ERROR cannot infer an appropriate lifetime
+28 | |             // &arr1[r2]; //~ ERROR cannot infer an appropriate lifetime
+29 | |         });
+   | |_________^
+   = note: ...so that the types are compatible:
+           expected std::ops::Index<indexing::index::Range<'_>>
+              found std::ops::Index<indexing::index::Range<'_>>
+
+error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'id` due to conflicting requirements
+  --> $DIR/basic_branding.rs:35:14
+   |
+35 |             &arr1[r2]; //~ ERROR cannot infer an appropriate lifetime
+   |              ^^^^^^^^
+   |
+note: first, the lifetime cannot outlive the anonymous lifetime #2 defined on the body at 32:24...
+  --> $DIR/basic_branding.rs:32:24
+   |
+32 |       indices(&arr1[..], |arr1, r1| {
+   |  ________________________^
+33 | |         indices(&arr2[..], move |arr2, r2| {
+34 | |             // &arr2[r1]; //~ ERROR cannot infer an appropriate lifetime
+35 | |             &arr1[r2]; //~ ERROR cannot infer an appropriate lifetime
+36 | |         });
+37 | |     });
+   | |_____^
+note: ...but the lifetime must also be valid for the anonymous lifetime #2 defined on the body at 33:28...
+  --> $DIR/basic_branding.rs:33:28
+   |
+33 |           indices(&arr2[..], move |arr2, r2| {
+   |  ____________________________^
+34 | |             // &arr2[r1]; //~ ERROR cannot infer an appropriate lifetime
+35 | |             &arr1[r2]; //~ ERROR cannot infer an appropriate lifetime
+36 | |         });
+   | |_________^
+   = note: ...so that the types are compatible:
+           expected std::ops::Index<indexing::index::Range<'_>>
+              found std::ops::Index<indexing::index::Range<'_>>
+
+For more information about this error, try `rustc --explain E0495`.

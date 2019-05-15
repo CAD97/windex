@@ -62,6 +62,11 @@ impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
     }
 }
 
+impl<'id, I: Idx> Index<'id, I, NonEmpty> {
+    #[doc(hidden)]
+    pub fn observe_proof(&self) {}
+}
+
 impl<'id, I: Idx, Emptiness> fmt::Debug for Index<'id, I, Emptiness> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Index<'id>").field(&self.idx).finish()
@@ -176,7 +181,7 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
         }
     }
 
-    /// The starting index.
+    /// The starting index. (Accessible if the range is `NonEmpty`.)
     pub fn start(&self) -> Index<'id, I, Emptiness> {
         unsafe { Index::new_any(self.start.idx) }
     }
@@ -229,6 +234,19 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
         let end = cmp::max(self.end, other.end);
         unsafe { Range::new_any(start.idx, end.idx) }
     }
+
+    /// Create two empty ranges, at the front and the back of this range.
+    pub fn frontiers(&self) -> (Range<'id, I, Unknown>, Range<'id, I, Unknown>) {
+        (
+            Range::from(self.start(), self.start()),
+            Range::from(self.end(), self.end()),
+        )
+    }
+}
+
+impl<'id, I: Idx> Range<'id, I, NonEmpty> {
+    #[doc(hidden)]
+    pub fn observe_proof(&self) {}
 }
 
 /// # Note

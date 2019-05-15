@@ -1,0 +1,7 @@
+error[E0599]: no method named `observe_proof` found for type `indexing::index::Range<'_, _>` in the current scope
+  --> $DIR/join_proof_add.rs:29:36
+   |
+29 |             front.join_cover(back).observe_proof();
+   |                                    ^^^^^^^^^^^^^
+
+For more information about this error, try `rustc --explain E0599`.

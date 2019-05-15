@@ -115,7 +115,7 @@ unsafe impl TrustedItem<str> for Character {
     }
 }
 
-#[cfg(std)]
+#[cfg(feature = "std")]
 mod std_impls {
     use super::*;
     use std::string::String;
@@ -139,7 +139,7 @@ mod std_impls {
     }
 
     #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
-    unsafe impl TrustedItem<String> for str {
+    unsafe impl TrustedItem<String> for Character {
         type Unit = u8;
 
         fn vet<'id, I: Idx>(

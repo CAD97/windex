@@ -17,8 +17,8 @@ fn join_add_proof() {
             r.join_cover(r).start();
 
             assert_eq!(front.join(r).unwrap(), r);
-            assert_eq!(front.join_cover(back), r.erased());
-            assert_eq!(back.join_cover(front), r.erased()); // DIFFERENCE FROM bluss/indexing
+            assert_eq!(front.join_cover(back), r);
+            assert_eq!(back.join_cover(front), r); // DIFFERENCE FROM bluss/indexing
         }
     });
 }

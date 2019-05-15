@@ -23,9 +23,9 @@ fn nonempty() {
 fn contains() {
     let data = [0, 1, 2, 3, 4, 5];
     scope(&data[..], |data| {
-        let r = data.range::<u32>();
+        let r = data.range::<usize>();
         for i in 0..data.unit_len() {
-            assert!(r.contains_in(i, &data).is_som());
+            assert!(r.contains_in(i, &data).is_some());
             assert_eq!(r.contains_in(i, &data).unwrap(), data.vet(i).unwrap());
         }
         assert!(r.contains_in(r.len(), &data).is_none());

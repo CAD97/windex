@@ -87,15 +87,15 @@ impl<'id, I: Idx, Emptiness> Ord for Index<'id, I, Emptiness> {
     }
 }
 
-impl<'id, I: Idx, Emptiness> PartialOrd for Index<'id, I, Emptiness> {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+impl<'id, I: Idx, P, Q> PartialOrd<Index<'id, I, Q>> for Index<'id, I, P> {
+    fn partial_cmp(&self, other: &Index<'id, I, Q>) -> Option<cmp::Ordering> {
         self.idx.partial_cmp(&other.idx)
     }
 }
 
 impl<'id, I: Idx, Emptiness> Eq for Index<'id, I, Emptiness> {}
-impl<'id, I: Idx, Emptiness> PartialEq for Index<'id, I, Emptiness> {
-    fn eq(&self, other: &Self) -> bool {
+impl<'id, I: Idx, P, Q> PartialEq<Index<'id, I, Q>> for Index<'id, I, P> {
+    fn eq(&self, other: &Index<'id, I, Q>) -> bool {
         self.idx.eq(&other.idx)
     }
 }
@@ -194,7 +194,6 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
 
     /// Split around the middle `index` if it is in this range.
     pub fn split_at<E>(&self, index: Index<'id, I, E>) -> Option<(Range<'id, I>, Range<'id, I>)> {
-        let index = index.erased();
         if index >= self.start && index <= self.end {
             unsafe {
                 Some((
@@ -222,7 +221,7 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
 
     /// If the index is within this range. Provides a nonempty proof.
     pub fn contains<P>(&self, index: Index<'id, I, P>) -> Option<Index<'id, I, NonEmpty>> {
-        if index.erased() >= self.start().erased() && index.erased() < self.end() {
+        if index >= self.start() && index < self.end() {
             unsafe { Some(Index::new_nonempty(index.untrusted())) }
         } else {
             None
@@ -279,7 +278,7 @@ impl<'id, I: Idx> Range<'id, I, NonEmpty> {
         container: &Container<'id, Array>,
     ) -> bool {
         if let Some(next) = container.advance(self.start()) {
-            if next.erased() < self.end() {
+            if next < self.end() {
                 *self = unsafe { Range::new_nonempty(next.untrusted(), self.end().untrusted()) };
                 true
             } else {
@@ -318,8 +317,8 @@ impl<'id, I: Idx, Emptiness> Clone for Range<'id, I, Emptiness> {
 }
 
 impl<'id, I: Idx, Emptiness> Eq for Range<'id, I, Emptiness> {}
-impl<'id, I: Idx, Emptiness> PartialEq for Range<'id, I, Emptiness> {
-    fn eq(&self, other: &Self) -> bool {
+impl<'id, I: Idx, P, Q> PartialEq<Range<'id, I, Q>> for Range<'id, I, P> {
+    fn eq(&self, other: &Range<'id, I, Q>) -> bool {
         self.start.eq(&other.start) && self.end.eq(&other.end)
     }
 }

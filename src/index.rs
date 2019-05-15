@@ -194,7 +194,7 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
     /// Split around the middle `index` if it is in this range.
     pub fn split_at<E>(&self, index: Index<'id, I, E>) -> Option<(Range<'id, I>, Range<'id, I>)> {
         let index = index.erased();
-        if index > self.start && index < self.end {
+        if index >= self.start && index <= self.end {
             unsafe {
                 Some((
                     Range::new(self.start.idx, index.idx),

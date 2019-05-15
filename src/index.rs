@@ -1,3 +1,5 @@
+#[cfg(feature = "doc")]
+use crate::scope;
 use {
     crate::{
         proof::{Id, NonEmpty, ProofAdd, Unknown},

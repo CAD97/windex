@@ -1,3 +1,5 @@
+#[cfg(feature = "doc")]
+use crate::{scope, scope_ref};
 use {
     crate::{
         index::{Index, IndexError, Range},
@@ -40,7 +42,14 @@ impl<'id, Array: TrustedContainer + ?Sized> Container<'id, &Array> {
 
 impl<'id, Array: TrustedContainer + ?Sized> Container<'id, Array> {
     /// This container without the branding.
-    // FUTURE: Can this return `&'id Array`?
+    ///
+    /// # Note
+    ///
+    /// The returned lifetime of `&Array` is _not_ `'id`! It's completely
+    /// valid to drop the container during the [`scope`], in which case this
+    /// reference would become invalid. If you need a longer lifetime,
+    /// consider using [`scope_ref`] such that the reference is guaranteed to
+    /// live for the entire scope.
     pub fn untrusted(&self) -> &Array {
         &self.array
     }

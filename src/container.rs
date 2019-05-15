@@ -31,6 +31,13 @@ impl<'id, Array: TrustedContainer> Container<'id, Array> {
         }
     }
 }
+
+impl<'id, Array: TrustedContainer + ?Sized> Container<'id, &Array> {
+    pub(crate) fn project(&self) -> &Container<'id, Array> {
+        unsafe { &*(self.array as *const Array as *const Container<'id, Array>) }
+    }
+}
+
 impl<'id, Array: TrustedContainer + ?Sized> Container<'id, Array> {
     /// This container without the branding.
     // FUTURE: Can this return `&'id Array`?

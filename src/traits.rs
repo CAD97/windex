@@ -55,10 +55,6 @@ pub unsafe trait TrustedContainer {
     /// The length of the container in base item units.
     fn unit_len(&self) -> usize;
 
-    //    fn begin(&self) -> *const Self::Item;
-    //    fn end(&self) -> *const Self::Item;
-    //    fn as_slice(&self) -> &Self::Slice;
-
     unsafe fn get_unchecked(&self, i: usize) -> &Self::Item;
     unsafe fn slice_unchecked(&self, r: ops::Range<usize>) -> &Self::Slice;
 }
@@ -89,28 +85,22 @@ pub unsafe trait TrustedItem<Array: TrustedContainer<Item = Self> + ?Sized> {
     ) -> Option<Index<'id, I, NonEmpty>>;
 }
 
-// FUTURE: requires some hairy blanket impls to pass type check
-//
-// unsafe impl<T: Trustworthy + ?Sized> Trustworthy for &T {
-//     type Item = T::Item;
-//     type Slice = T::Slice;
-//
-//     fn begin(&self) -> *const Self::Item {
-//         T::begin(self)
-//     }
-//
-//     fn end(&self) -> *const Self::Item {
-//         T::end(self)
-//     }
-//
-//     fn as_slice(&self) -> &Self::Slice {
-//         T::as_slice(self)
-//     }
-//
-//     unsafe fn get_unchecked(&self, i: usize) -> &Self::Item {
-//         T::get_unchecked(self, i)
-//     }
-// }
+unsafe impl<T: TrustedContainer + ?Sized> TrustedContainer for &T {
+    type Item = T::Item;
+    type Slice = T::Slice;
+
+    fn unit_len(&self) -> usize {
+        T::unit_len(self)
+    }
+
+    unsafe fn get_unchecked(&self, i: usize) -> &Self::Item {
+        T::get_unchecked(self, i)
+    }
+
+    unsafe fn slice_unchecked(&self, r: ops::Range<usize>) -> &Self::Slice {
+        T::slice_unchecked(self, r)
+    }
+}
 
 unsafe impl<T> TrustedContainer for [T] {
     type Item = T;
@@ -130,6 +120,33 @@ unsafe impl<T> TrustedContainer for [T] {
         debug_assert!(r.end <= self.len());
         debug_assert!(r.start <= r.end);
         self.get_unchecked(r)
+    }
+}
+
+unsafe impl<T: TrustedItem<Array> + ?Sized, Array: TrustedContainer<Item = T> + ?Sized>
+    TrustedItem<&Array> for T
+{
+    type Unit = T::Unit;
+
+    fn vet<'id, I: Idx>(
+        idx: I,
+        container: &Container<'id, &Array>,
+    ) -> Result<Index<'id, I, Unknown>, IndexError> {
+        T::vet(idx, container.project())
+    }
+
+    fn after<'id, I: Idx>(
+        this: Index<'id, I, NonEmpty>,
+        container: &Container<'id, &Array>,
+    ) -> Index<'id, I, Unknown> {
+        T::after(this, container.project())
+    }
+
+    fn advance<'id, I: Idx>(
+        this: Index<'id, I, NonEmpty>,
+        container: &Container<'id, &Array>,
+    ) -> Option<Index<'id, I, NonEmpty>> {
+        T::advance(this, container.project())
     }
 }
 

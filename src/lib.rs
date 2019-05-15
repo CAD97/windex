@@ -1,0 +1,89 @@
+//! Sound unchecked indexing using the techniques from [indexing],
+//! but extended to string slices and without pointer or mutability support.
+//!
+//! Major kudos go to Gankro and especially Bluss for the [indexing] crate,
+//! from which this crate blatantly steals all of its cleverness.
+//!
+//! # Basic Structure
+//!
+//! - A scope is created using the [`scope`] function; inside this scope,
+//!   there is a [`Container`] object that has two roles: (1) it gives out or
+//!   vets trusted indices, pointers and ranges (2) it provides access to the
+//!   underlying data through these indices and ranges.
+//!
+//! - The container and its indices and ranges are “branded” with a lifetime
+//!   parameter `'id` which is an identity marker. Branded items
+//!   can't leave their scope, and they tie the items uniquely to a particular
+//!   container. This makes it possible to trust them.
+//!
+//! - `Index<'id>` is a trusted index
+//! - `Range<'id, Emptiness>` is a trusted range.
+//!
+//! - For a range, if the proof parameter `Emptiness` is `NonEmpty`, then the
+//!   range is known to have at least one element. An observation: A non-empty
+//!   range always has a valid front index, so it is interchangeable with the
+//!   index representation.
+//!
+//! - Indices also use the same proof parameter. A `NonEmpty` index points to a
+//!   valid element, while an `Unknown` index is an edge index (it can be used
+//!   to slice the container, but not to dereference to an element).
+//!
+//! - All ranges have a `.first()` method to get the first index in the range,
+//!   but it's only when the range is nonempty that the returned index is also
+//!   `NonEmpty` and thus dereferenceable.
+//!
+//! # Borrowing
+//!
+//! - Indices and ranges are freely copyable and do not track the backing data
+//!   themselves. All access to the underlying data goes through the
+//!   [`Container`] (e.g. by indexing the container with a trusted index).
+//!
+//!   [indexing]: <https://github.com/bluss/indexing>
+
+#![no_std]
+#![deny(rust_2018_idioms, unconditional_recursion)]
+
+mod container;
+mod index;
+pub mod proof;
+pub mod traits;
+pub mod utf8;
+
+use crate::traits::TrustedContainer;
+
+pub use crate::{
+    container::Container,
+    index::{Index, Range, IndexError},
+};
+
+/// Create an indexing scope for a container.
+///
+/// The indexing scope is a closure that is passed a unique lifetime for the
+/// parameter `'id`; this lifetime brands the container and its indices and
+/// ranges, so that they are trusted to be in bounds.
+///
+/// Indices and ranges branded with `'id` cannot leave the closure. The
+/// container can only be accessed through the `Container` wrapper passed as
+/// the first argument to the indexing scope.
+pub fn scope<Array: TrustedContainer, F, Out>(array: Array, f: F) -> Out
+where
+    F: for<'id> FnOnce(Container<'id, Array>) -> Out,
+{
+    // This is where the magic happens. We bind the indexer and indices to the
+    // same invariant lifetime (a constraint established by F's definition).
+    // As such, each call to `indices` produces a unique signature that only
+    // these two values can share.
+    //
+    // Within this function, the borrow solver can choose literally any
+    // lifetime, including `'static`, but we don't care what the borrow solver
+    // does in *this* function. We only need to trick the solver in the
+    // caller's scope. Since borrowck doesn't do interprocedural analysis, it
+    // sees every call to this function produces values with some opaque fresh
+    // lifetime and can't unify any of them.
+    //
+    // In principle a "super borrowchecker" that does interprocedural analysis
+    // would break this design, but we could go out of our way to somehow bind
+    // the lifetime to the inside of this function, making it sound again.
+    // Rustc will never do such analysis, so we don't care.
+    f(unsafe { Container::new(array) })
+}

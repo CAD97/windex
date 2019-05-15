@@ -34,12 +34,6 @@ impl<'id, Array: TrustedContainer> Container<'id, Array> {
     }
 }
 
-impl<'id, Array: TrustedContainer + ?Sized> Container<'id, &Array> {
-    pub fn project(&self) -> &Container<'id, Array> {
-        unsafe { &*(self.array as *const Array as *const Container<'id, Array>) }
-    }
-}
-
 impl<'id, Array: TrustedContainer + ?Sized> Container<'id, Array> {
     /// This container without the branding.
     ///
@@ -182,6 +176,28 @@ impl<'id, Array: TrustedContainer + ?Sized> Container<'id, Array> {
     }
 }
 
+impl<'id, Array: ?Sized, D> ops::Deref for Container<'id, D>
+    where
+        Array: TrustedContainer,
+        D: TrustedContainer + ops::Deref<Target = Array>,
+{
+    type Target = Container<'id, Array>;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*(&*self.array as *const Array as *const Container<'id, Array>) }
+    }
+}
+
+impl<'id, Array: ?Sized, D> ops::DerefMut for Container<'id, D>
+    where
+        Array: TrustedContainer,
+        D: TrustedContainer + ops::DerefMut<Target = Array>,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *(&mut *self.array as *mut Array as *mut Container<'id, Array>) }
+    }
+}
+
 impl<'id, Array: TrustedContainer + ?Sized, I: Idx> ops::Index<Index<'id, I, NonEmpty>>
     for Container<'id, Array>
 {
@@ -234,6 +250,7 @@ impl<'id, Array: TrustedContainer + ?Sized> ops::Index<ops::RangeFull> for Conta
 }
 
 impl<'id, Array: TrustedContainer + Copy> Copy for Container<'id, Array> {}
+
 impl<'id, Array: TrustedContainer + Clone> Clone for Container<'id, Array> {
     fn clone(&self) -> Self {
         unsafe { Container::new(self.array.clone()) }

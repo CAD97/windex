@@ -35,7 +35,7 @@ fn contains() {
 
 #[test]
 fn is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() { }
+    fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Index<'_>>();
     assert_send_sync::<Range<'_>>();
 }

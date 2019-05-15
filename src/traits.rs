@@ -3,7 +3,7 @@ use {
         proof::{NonEmpty, Unknown},
         Container, Index, IndexError,
     },
-    core::{convert::TryFrom, fmt, hash::Hash, ops},
+    core::{cmp, convert::TryFrom, fmt, hash::Hash, ops},
 };
 
 /// Unsigned integers able to be used as a trusted index.
@@ -44,12 +44,12 @@ impl_Idx! {
     usize,
 }
 
-/// Types that can back a trusted container: it can have
-/// indices and ranges that are trusted to be in bounds.
-///
-/// It must have a continuously addressable range.
+/// Types that can back a trusted container: it can have indices and ranges
+/// that are trusted to be in bounds. See also [`TrustedItem`], [`TrustedUnit`].
 pub unsafe trait TrustedContainer {
+    /// The item type of this container.
     type Item: ?Sized + TrustedItem<Self>;
+    /// The slice type of this container.
     type Slice: ?Sized;
 
     /// The length of the container in base item units.
@@ -59,20 +59,37 @@ pub unsafe trait TrustedContainer {
     unsafe fn slice_unchecked(&self, r: ops::Range<usize>) -> &Self::Slice;
 }
 
-/// An item within a trusted container.
-pub unsafe trait TrustedItem<Array: TrustedContainer<Item = Self> + ?Sized> {
+pub unsafe trait TrustedContainerMut: TrustedContainer {
+    unsafe fn get_unchecked_mut(&mut self, i: usize) -> &Self::Item;
+    unsafe fn slice_unchecked_mut(&mut self, r: ops::Range<usize>) -> &Self::Slice;
+}
+
+// FUTURE: feature(arbitrary_self_types) for `this: Index<'id, I, _>`?
+/// An item within a [`TrustedContainer`].
+///
+/// Note that raw indices are _unit_ indices, not item indices. One item (e.g.
+/// a character) can be made up of multiple units (e.g. bytes).
+pub unsafe trait TrustedItem<Array: ?Sized>
+where
+    Array: TrustedContainer<Item = Self>,
+{
+    /// The base representational unit type.
     type Unit;
 
-    /// Vet an index for being on item boundaries.
+    /// Vet an untrusted index for being on item boundaries.
     ///
-    /// The index for the end of the container should pass.
-    /// This function does not imply a nonempty proof.
+    /// The index for one-past-the-end of the container is a valid index. This
+    /// method conveys no emptiness proof (use [`Container::vet`] for that).
     fn vet<'id, I: Idx>(
         idx: I,
         container: &Container<'id, Array>,
     ) -> Result<Index<'id, I, Unknown>, IndexError>;
 
-    /// Increment an index to the next item, potentially leaving the container.
+    /// The largest trusted index less than or equal to this untrusted index.
+    fn align<'id, I: Idx>(idx: I, container: &Container<'id, Array>) -> Index<'id, I, Unknown>;
+
+    /// Increment an index to the next item, potentially resulting in an index
+    /// that is one-past-the-end of the container.
     fn after<'id, I: Idx>(
         this: Index<'id, I, NonEmpty>,
         container: &Container<'id, Array>,
@@ -82,80 +99,45 @@ pub unsafe trait TrustedItem<Array: TrustedContainer<Item = Self> + ?Sized> {
     fn advance<'id, I: Idx>(
         this: Index<'id, I, NonEmpty>,
         container: &Container<'id, Array>,
-    ) -> Option<Index<'id, I, NonEmpty>>;
-}
-
-unsafe impl<T: TrustedContainer + ?Sized> TrustedContainer for &T {
-    type Item = T::Item;
-    type Slice = T::Slice;
-
-    fn unit_len(&self) -> usize {
-        T::unit_len(self)
-    }
-
-    unsafe fn get_unchecked(&self, i: usize) -> &Self::Item {
-        T::get_unchecked(self, i)
-    }
-
-    unsafe fn slice_unchecked(&self, r: ops::Range<usize>) -> &Self::Slice {
-        T::slice_unchecked(self, r)
-    }
-}
-
-unsafe impl<T> TrustedContainer for [T] {
-    type Item = T;
-    type Slice = [T];
-
-    fn unit_len(&self) -> usize {
-        self.len()
-    }
-
-    unsafe fn get_unchecked(&self, i: usize) -> &Self::Item {
-        debug_assert!(i < self.len());
-        self.get_unchecked(i)
-    }
-
-    unsafe fn slice_unchecked(&self, r: ops::Range<usize>) -> &Self::Slice {
-        debug_assert!(r.start <= self.len());
-        debug_assert!(r.end <= self.len());
-        debug_assert!(r.start <= r.end);
-        self.get_unchecked(r)
-    }
-}
-
-unsafe impl<T: TrustedItem<Array> + ?Sized, Array: TrustedContainer<Item = T> + ?Sized>
-    TrustedItem<&Array> for T
-{
-    type Unit = T::Unit;
-
-    fn vet<'id, I: Idx>(
-        idx: I,
-        container: &Container<'id, &Array>,
-    ) -> Result<Index<'id, I, Unknown>, IndexError> {
-        T::vet(idx, container.project())
-    }
-
-    fn after<'id, I: Idx>(
-        this: Index<'id, I, NonEmpty>,
-        container: &Container<'id, &Array>,
-    ) -> Index<'id, I, Unknown> {
-        T::after(this, container.project())
-    }
-
-    fn advance<'id, I: Idx>(
-        this: Index<'id, I, NonEmpty>,
-        container: &Container<'id, &Array>,
     ) -> Option<Index<'id, I, NonEmpty>> {
-        T::advance(this, container.project())
+        let after = Self::after(this, container);
+        // TODO: This should be `Index::nonempty_in`
+        if after < container.end() {
+            unsafe { Some(Index::new_nonempty(after.untrusted())) }
+        } else {
+            None
+        }
+    }
+
+    /// Decrement an index to the previous item, if a previous item exists.
+    fn before<'id, I: Idx, P>(
+        this: Index<'id, I, P>,
+        container: &Container<'id, Array>,
+    ) -> Option<Index<'id, I, NonEmpty>> {
+        if this.untrusted() > I::zero() {
+            let aligned = Self::align(this.untrusted().sub(1), container);
+            unsafe { Some(Index::new_nonempty(aligned.untrusted())) }
+        } else {
+            None
+        }
     }
 }
 
-unsafe impl<T> TrustedItem<[T]> for T {
-    type Unit = T;
-
-    fn vet<'id, I: Idx>(
+//noinspection RsNeedlessLifetimes [intellij-rust/intellij-rust#3844]
+/// A [`TrustedItem`] where the item is the base unit. Thus, manipulating
+/// indices and ranges of the container is as simple as regular arithmetic.
+pub unsafe trait TrustedUnit<Array: ?Sized>:
+    TrustedItem<Array, Unit = Self> + Sized
+where
+    Array: TrustedContainer<Item = Self, Slice = [Self]>,
+{
+    /// Vet an untrusted index for being on item boundaries.
+    ///
+    /// The index for one-past-the-end of the container is a valid index. This
+    /// method conveys no emptiness proof (use [`Container::vet`] for that).
+    fn unit_vet<'id, I: Idx>(
         idx: I,
-        container: &Container<'id, [T]>,
+        container: &Container<'id, Array>,
     ) -> Result<Index<'id, I, Unknown>, IndexError> {
         if idx.as_usize() <= container.unit_len() {
             Ok(unsafe { Index::new(idx) })
@@ -164,127 +146,81 @@ unsafe impl<T> TrustedItem<[T]> for T {
         }
     }
 
-    fn after<'id, I: Idx>(
-        this: Index<'id, I, NonEmpty>,
-        _: &Container<'id, [T]>,
+    /// The largest trusted index less than or equal to this untrusted index.
+    fn unit_align<'id, I: Idx>(
+        idx: I,
+        container: &Container<'id, Array>,
     ) -> Index<'id, I, Unknown> {
+        unsafe { Index::new(cmp::min(idx, container.end().untrusted())) }
+    }
+
+    /// Increment an index to the next item, potentially resulting in an index
+    /// that is one-past-the-end of the container.
+    #[allow(clippy::needless_lifetimes)]
+    fn unit_after<'id, I: Idx>(this: Index<'id, I, NonEmpty>) -> Index<'id, I, Unknown> {
         unsafe { Index::new(this.untrusted().add(1)) }
     }
 
-    fn advance<'id, I: Idx>(
+    /// Advance an index to the next item, if a next item exists.
+    fn unit_advance<'id, I: Idx>(
         this: Index<'id, I, NonEmpty>,
-        container: &Container<'id, [T]>,
+        container: &Container<'id, Array>,
     ) -> Option<Index<'id, I, NonEmpty>> {
-        container.vet(Self::after(this, container).untrusted()).ok()
+        if this.untrusted().as_usize() < container.unit_len() {
+            unsafe { Some(Index::new_nonempty(this.untrusted().add(1))) }
+        } else {
+            None
+        }
+    }
+
+    /// Decrement an index to the previous item, if a previous item exists.
+    #[allow(clippy::needless_lifetimes)]
+    fn unit_before<'id, I: Idx, P>(this: Index<'id, I, P>) -> Option<Index<'id, I, NonEmpty>> {
+        if this.untrusted() > I::zero() {
+            unsafe { Some(Index::new_nonempty(this.untrusted().sub(1))) }
+        } else {
+            None
+        }
     }
 }
 
-#[cfg(feature = "std")]
-mod std_impls {
-    use super::*;
-    use std::{boxed::Box, vec::Vec};
+macro_rules! __trusted_item_forwarding {
+    ({$($bounds:tt)*} $Array:ty => $T:ty) => {
+        unsafe impl<$($bounds)*> TrustedItem<$Array> for $T {
+            type Unit = $T;
 
-    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
-    unsafe impl<T: TrustedContainer + ?Sized> TrustedContainer for Box<T> {
-        type Item = T::Item;
-        type Slice = T::Slice;
+            fn vet<'id, I: Idx>(
+                idx: I,
+                container: &Container<'id, $Array>,
+            ) -> Result<Index<'id, I, Unknown>, IndexError> {
+                <$T>::unit_vet(idx, container)
+            }
 
-        fn unit_len(&self) -> usize {
-            T::unit_len(&self)
+            fn align<'id, I: Idx>(idx: I, container: &Container<'id, $Array>) -> Index<'id, I, Unknown> {
+                <$T>::unit_align(idx, container)
+            }
+
+            fn after<'id, I: Idx>(
+                this: Index<'id, I, NonEmpty>,
+                _: &Container<'id, $Array>,
+            ) -> Index<'id, I, Unknown> {
+                <$T>::unit_after(this)
+            }
+
+            fn advance<'id, I: Idx>(
+                this: Index<'id, I, NonEmpty>,
+                container: &Container<'id, $Array>,
+            ) -> Option<Index<'id, I, NonEmpty>> {
+                <$T>::unit_advance(this, container)
+            }
+
+            fn before<'id, I: Idx, P>(
+                this: Index<'id, I, P>,
+                _: &Container<'id, $Array>,
+            ) -> Option<Index<'id, I, NonEmpty>> {
+                <$T>::unit_before(this)
+            }
         }
-
-        unsafe fn get_unchecked(&self, i: usize) -> &Self::Item {
-            T::get_unchecked(self, i)
-        }
-
-        unsafe fn slice_unchecked(&self, r: ops::Range<usize>) -> &Self::Slice {
-            T::slice_unchecked(self, r)
-        }
-    }
-
-    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
-    unsafe impl<T: TrustedItem<Array> + ?Sized, Array: TrustedContainer<Item = T> + ?Sized>
-        TrustedItem<Box<Array>> for T
-    {
-        type Unit = T::Unit;
-
-        fn vet<'id, I: Idx>(
-            idx: I,
-            container: &Container<'id, Box<Array>>,
-        ) -> Result<Index<'id, I, Unknown>, IndexError> {
-            T::vet(idx, container.project())
-        }
-
-        fn after<'id, I: Idx>(
-            this: Index<'id, I, NonEmpty>,
-            container: &Container<'id, Box<Array>>,
-        ) -> Index<'id, I, Unknown> {
-            T::after(this, container.project())
-        }
-
-        fn advance<'id, I: Idx>(
-            this: Index<'id, I, NonEmpty>,
-            container: &Container<'id, Box<Array>>,
-        ) -> Option<Index<'id, I, NonEmpty>> {
-            T::advance(this, container.project())
-        }
-    }
-
-    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
-    impl<'id, Array: TrustedContainer + ?Sized> Container<'id, Box<Array>> {
-        pub fn project(&self) -> &Container<'id, Array> {
-            unsafe { &*(&**self.untrusted() as *const Array as *const Container<'id, Array>) }
-        }
-    }
-
-    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
-    unsafe impl<T> TrustedContainer for Vec<T> {
-        type Item = T;
-        type Slice = [T];
-
-        fn unit_len(&self) -> usize {
-            self.len()
-        }
-
-        unsafe fn get_unchecked(&self, i: usize) -> &Self::Item {
-            <[T]>::get_unchecked(self, i)
-        }
-
-        unsafe fn slice_unchecked(&self, r: ops::Range<usize>) -> &Self::Slice {
-            <[T]>::slice_unchecked(self, r)
-        }
-    }
-
-    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
-    unsafe impl<T: TrustedItem<[T]>> TrustedItem<Vec<T>> for T {
-        type Unit = T::Unit;
-
-        fn vet<'id, I: Idx>(
-            idx: I,
-            container: &Container<'id, Vec<T>>,
-        ) -> Result<Index<'id, I, Unknown>, IndexError> {
-            T::vet(idx, container.project())
-        }
-
-        fn after<'id, I: Idx>(
-            this: Index<'id, I, NonEmpty>,
-            container: &Container<'id, Vec<T>>,
-        ) -> Index<'id, I, Unknown> {
-            T::after(this, container.project())
-        }
-
-        fn advance<'id, I: Idx>(
-            this: Index<'id, I, NonEmpty>,
-            container: &Container<'id, Vec<T>>,
-        ) -> Option<Index<'id, I, NonEmpty>> {
-            T::advance(this, container.project())
-        }
-    }
-
-    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
-    impl<'id, T> Container<'id, Vec<T>> {
-        pub fn project(&self) -> &Container<'id, [T]> {
-            unsafe { &*(&**self.untrusted() as *const [T] as *const Container<'id, [T]>) }
-        }
-    }
+    };
 }
+pub(crate) use __trusted_item_forwarding as trusted_item_forwarding;

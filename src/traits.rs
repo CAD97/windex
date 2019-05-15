@@ -179,8 +179,114 @@ unsafe impl<T> TrustedItem<[T]> for T {
     }
 }
 
-#[cfg(std)]
+#[cfg(feature = "std")]
 mod std_impls {
-    // Box<impl TrustedContainer>
-    // Vec<T>
+    use super::*;
+    use std::{boxed::Box, vec::Vec};
+
+    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
+    unsafe impl<T: TrustedContainer + ?Sized> TrustedContainer for Box<T> {
+        type Item = T::Item;
+        type Slice = T::Slice;
+
+        fn unit_len(&self) -> usize {
+            T::unit_len(&self)
+        }
+
+        unsafe fn get_unchecked(&self, i: usize) -> &Self::Item {
+            T::get_unchecked(self, i)
+        }
+
+        unsafe fn slice_unchecked(&self, r: ops::Range<usize>) -> &Self::Slice {
+            T::slice_unchecked(self, r)
+        }
+    }
+
+    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
+    unsafe impl<T: TrustedItem<Array> + ?Sized, Array: TrustedContainer<Item = T> + ?Sized>
+        TrustedItem<Box<Array>> for T
+    {
+        type Unit = T::Unit;
+
+        fn vet<'id, I: Idx>(
+            idx: I,
+            container: &Container<'id, Box<Array>>,
+        ) -> Result<Index<'id, I, Unknown>, IndexError> {
+            T::vet(idx, container.project())
+        }
+
+        fn after<'id, I: Idx>(
+            this: Index<'id, I, NonEmpty>,
+            container: &Container<'id, Box<Array>>,
+        ) -> Index<'id, I, Unknown> {
+            T::after(this, container.project())
+        }
+
+        fn advance<'id, I: Idx>(
+            this: Index<'id, I, NonEmpty>,
+            container: &Container<'id, Box<Array>>,
+        ) -> Option<Index<'id, I, NonEmpty>> {
+            T::advance(this, container.project())
+        }
+    }
+
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
+    impl<'id, Array: TrustedContainer + ?Sized> Container<'id, std::boxed::Box<Array>> {
+        pub(crate) fn project(&self) -> &Container<'id, Array> {
+            unsafe { &*(&**self.untrusted() as *const Array as *const Container<'id, Array>) }
+        }
+    }
+
+    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
+    unsafe impl<T> TrustedContainer for Vec<T> {
+        type Item = T;
+        type Slice = [T];
+
+        fn unit_len(&self) -> usize {
+            self.len()
+        }
+
+        unsafe fn get_unchecked(&self, i: usize) -> &Self::Item {
+            <[T]>::get_unchecked(self, i)
+        }
+
+        unsafe fn slice_unchecked(&self, r: ops::Range<usize>) -> &Self::Slice {
+            <[T]>::slice_unchecked(self, r)
+        }
+    }
+
+    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
+    unsafe impl<T: TrustedItem<[T]>> TrustedItem<Vec<T>> for T {
+        type Unit = T::Unit;
+
+        fn vet<'id, I: Idx>(
+            idx: I,
+            container: &Container<'id, Vec<T>>,
+        ) -> Result<Index<'id, I, Unknown>, IndexError> {
+            T::vet(idx, container.project())
+        }
+
+        fn after<'id, I: Idx>(
+            this: Index<'id, I, NonEmpty>,
+            container: &Container<'id, Vec<T>>,
+        ) -> Index<'id, I, Unknown> {
+            T::after(this, container.project())
+        }
+
+        fn advance<'id, I: Idx>(
+            this: Index<'id, I, NonEmpty>,
+            container: &Container<'id, Vec<T>>,
+        ) -> Option<Index<'id, I, NonEmpty>> {
+            T::advance(this, container.project())
+        }
+    }
+
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "doc", doc(cfg(feature = "std")))]
+    impl<'id, T> Container<'id, std::vec::Vec<T>> {
+        pub(crate) fn project(&self) -> &Container<'id, [T]> {
+            unsafe { &*(&**self.untrusted() as *const [T] as *const Container<'id, [T]>) }
+        }
+    }
 }

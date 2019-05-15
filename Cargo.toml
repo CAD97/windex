@@ -20,3 +20,7 @@ new_debug_unreachable = "1.0.3"
 [features]
 default = ["std"]
 std = []
+doc = [] # opt in to #[doc(cfg(...))]
+
+[package.metadata.docs.rs]
+all-features = true

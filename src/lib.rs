@@ -42,6 +42,10 @@
 
 #![no_std]
 #![deny(rust_2018_idioms, unconditional_recursion)]
+#![cfg_attr(feature = "doc", feature(doc_cfg))]
+
+#[cfg(feature = "std")]
+extern crate std;
 
 mod container;
 mod index;

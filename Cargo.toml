@@ -1,5 +1,5 @@
 [package]
-name = "indexing"
+name = "indexing-str"
 version = "0.1.0"
 edition = "2018"
 
@@ -13,6 +13,9 @@ readme = "./README.md"
 keywords = ["data-structure","generativity","no_std","indexing"]
 categories = ["no-std","rust-patterns"]
 license = "MIT OR Apache-2.0"
+
+[lib]
+name = "indexing"
 
 [dependencies]
 new_debug_unreachable = "1.0.3"

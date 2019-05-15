@@ -53,7 +53,7 @@ use crate::traits::TrustedContainer;
 
 pub use crate::{
     container::Container,
-    index::{Index, Range, IndexError},
+    index::{Index, IndexError, Range},
 };
 
 /// Create an indexing scope for a container.

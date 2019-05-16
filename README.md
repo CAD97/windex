@@ -3,8 +3,8 @@
 "Sound unchecked indexing" in Rust using "generativity"
 (branding by unique lifetime parameter).
 
-> You seemed to want guarantees stronger than I thought possible.
-> - eddyb
+> You seemed to want guarantees stronger than I thought possible.  
+> \- eddyb
 
 Well, they're here!
 

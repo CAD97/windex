@@ -28,6 +28,8 @@ pub struct Index<'id, I: Idx = u32, Emptiness = NonEmpty> {
     phantom: PhantomData<Emptiness>,
 }
 
+// ~~~ Private Helpers ~~~ //
+
 impl<'id, I: Idx> Index<'id, I, Unknown> {
     pub(crate) unsafe fn new(idx: I) -> Self {
         Index::new_any(idx)
@@ -48,7 +50,13 @@ impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
             phantom: PhantomData,
         }
     }
+
+    pub(crate) unsafe fn trusted(&self) -> Index<'id, I, NonEmpty> {
+        Index::new_nonempty(self.untrusted())
+    }
 }
+
+// ~~~ Discarding Proofs ~~~ //
 
 impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
     /// This index without the branding.
@@ -62,6 +70,8 @@ impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
     }
 }
 
+// ~~~ Gaining Proofs ~~~ //
+
 impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
     /// Try to create a proof that this index is nonempty.
     pub fn nonempty_in<Array: ?Sized + TrustedContainer>(
@@ -69,7 +79,7 @@ impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
         container: &Container<'id, Array>,
     ) -> Option<Index<'id, I, NonEmpty>> {
         if *self < container.end() {
-            unsafe { Some(Index::new_nonempty(self.untrusted())) }
+            unsafe { Some(self.trusted()) }
         } else {
             None
         }
@@ -78,17 +88,14 @@ impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
     /// Try to create a proof that this index is within a range.
     pub fn in_range<Q>(&self, range: Range<'id, I, Q>) -> Option<Index<'id, I, NonEmpty>> {
         if *self >= range.start() && *self < range.end() {
-            unsafe { Some(Index::new_nonempty(self.untrusted())) }
+            unsafe { Some(self.trusted()) }
         } else {
             None
         }
     }
 }
 
-impl<'id, I: Idx> Index<'id, I, NonEmpty> {
-    #[doc(hidden)]
-    pub fn observe_proof(&self) {}
-}
+// ~~~ Derive traits but without unneeded bounds ~~~ //
 
 impl<'id, I: Idx, Emptiness> fmt::Debug for Index<'id, I, Emptiness> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

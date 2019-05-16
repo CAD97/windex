@@ -44,16 +44,13 @@
 #![deny(rust_2018_idioms, unconditional_recursion)]
 #![cfg_attr(feature = "doc", feature(doc_cfg))]
 
-#[cfg(feature = "std")]
-extern crate std;
-
 mod container;
 mod r#impl;
 mod index;
 pub mod proof;
 pub mod traits;
 
-use {crate::traits::TrustedContainer, debug_unreachable::debug_unreachable, std::ops};
+use {crate::traits::TrustedContainer, core::ops, debug_unreachable::debug_unreachable};
 
 pub use crate::{
     container::Container,

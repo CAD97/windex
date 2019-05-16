@@ -1,4 +1,4 @@
-error[E0599]: no method named `observe_proof` found for type `indexing::index::Range<'_, _>` in the current scope
+error[E0599]: no method named `observe_proof` found for type `indexing::index::range::Range<'_, _>` in the current scope
   --> $DIR/join_proof_add.rs:28:36
    |
 28 |             front.join_cover(back).observe_proof();

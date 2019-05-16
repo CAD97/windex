@@ -2,8 +2,8 @@
 use crate::scope;
 use {
     crate::{
-        container::Container,
-        proof::{Id, NonEmpty, ProofAdd, Unknown},
+        Container, Index,
+        proof::{NonEmpty, ProofAdd, Unknown},
         traits::{Idx, TrustedContainer},
     },
     core::{
@@ -13,121 +13,6 @@ use {
         ops,
     },
 };
-
-/// A branded index.
-///
-/// `Index<'id>` only indexes the container instantiated with the exact same
-/// lifetime for the parameter `'id` created by the [`scope`] function.
-///
-/// The type parameter `Emptiness` determines if the index is followable.
-/// A `NonEmpty` index points to a valid element. An `Unknown` index is
-/// unknown, or it points to an edge index (one past the end).
-pub struct Index<'id, I: Idx = u32, Emptiness = NonEmpty> {
-    #[allow(unused)]
-    id: Id<'id>,
-    idx: I,
-    phantom: PhantomData<Emptiness>,
-}
-
-impl<'id, I: Idx> Index<'id, I, Unknown> {
-    pub(crate) unsafe fn new(idx: I) -> Self {
-        Index::new_any(idx)
-    }
-}
-
-impl<'id, I: Idx> Index<'id, I, NonEmpty> {
-    pub(crate) unsafe fn new_nonempty(idx: I) -> Self {
-        Index::new_any(idx)
-    }
-}
-
-impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
-    pub(crate) unsafe fn new_any(idx: I) -> Self {
-        Index {
-            id: Id::default(),
-            idx,
-            phantom: PhantomData,
-        }
-    }
-}
-
-impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
-    /// This index without the branding.
-    pub fn untrusted(&self) -> I {
-        self.idx
-    }
-
-    /// This index without the emptiness proof.
-    pub fn erased(&self) -> Index<'id, I, Unknown> {
-        unsafe { Index::new(self.idx) }
-    }
-}
-
-impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
-    /// Try to create a proof that this index is nonempty.
-    pub fn nonempty_in<Array: ?Sized + TrustedContainer>(
-        &self,
-        container: &Container<'id, Array>,
-    ) -> Option<Index<'id, I, NonEmpty>> {
-        if *self < container.end() {
-            unsafe { Some(Index::new_nonempty(self.untrusted())) }
-        } else {
-            None
-        }
-    }
-
-    /// Try to create a proof that this index is within a range.
-    pub fn in_range<Q>(&self, range: Range<'id, I, Q>) -> Option<Index<'id, I, NonEmpty>> {
-        if *self >= range.start() && *self < range.end() {
-            unsafe { Some(Index::new_nonempty(self.untrusted())) }
-        } else {
-            None
-        }
-    }
-}
-
-impl<'id, I: Idx> Index<'id, I, NonEmpty> {
-    #[doc(hidden)]
-    pub fn observe_proof(&self) {}
-}
-
-impl<'id, I: Idx, Emptiness> fmt::Debug for Index<'id, I, Emptiness> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Index<'id>").field(&self.idx).finish()
-    }
-}
-
-impl<'id, I: Idx, Emptiness> Copy for Index<'id, I, Emptiness> {}
-impl<'id, I: Idx, Emptiness> Clone for Index<'id, I, Emptiness> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
-impl<'id, I: Idx, Emptiness> Ord for Index<'id, I, Emptiness> {
-    fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.idx.cmp(&other.idx)
-    }
-}
-
-impl<'id, I: Idx, P, Q> PartialOrd<Index<'id, I, Q>> for Index<'id, I, P> {
-    fn partial_cmp(&self, other: &Index<'id, I, Q>) -> Option<cmp::Ordering> {
-        self.idx.partial_cmp(&other.idx)
-    }
-}
-
-impl<'id, I: Idx, Emptiness> Eq for Index<'id, I, Emptiness> {}
-impl<'id, I: Idx, P, Q> PartialEq<Index<'id, I, Q>> for Index<'id, I, P> {
-    fn eq(&self, other: &Index<'id, I, Q>) -> bool {
-        self.idx.eq(&other.idx)
-    }
-}
-
-impl<'id, I: Idx, Emptiness> Hash for Index<'id, I, Emptiness> {
-    fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.idx.hash(state);
-    }
-}
 
 /// A branded range.
 ///
@@ -174,12 +59,12 @@ impl<'id, I: Idx> Range<'id, I, Unknown> {
 impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
     /// This range without the branding.
     pub fn untrusted(&self) -> ops::Range<I> {
-        self.start.idx..self.end.idx
+        self.start.untrusted()..self.end.untrusted()
     }
 
     /// This range without the emptiness proof.
     pub fn erased(&self) -> Range<'id, I, Unknown> {
-        unsafe { Range::new(self.start.idx, self.end.idx) }
+        Range::from(self.start(), self.end())
     }
 
     /// The length of the range.
@@ -187,13 +72,13 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
         if self.is_empty() {
             I::zero()
         } else {
-            self.end.idx.sub(self.start.idx.as_usize())
+            self.end.untrusted().sub(self.start.untrusted().as_usize())
         }
     }
 
     /// `true` if the range is empty.
     pub fn is_empty(&self) -> bool {
-        self.start.idx >= self.end.idx
+        self.start.untrusted() >= self.end.untrusted()
     }
 
     /// Try to create a proof that the range is nonempty.
@@ -201,13 +86,13 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
         if self.is_empty() {
             None
         } else {
-            unsafe { Some(Range::new_nonempty(self.start.idx, self.end.idx)) }
+            unsafe { Some(Range::new_nonempty(self.start.untrusted(), self.end.untrusted())) }
         }
     }
 
     /// The starting index. (Accessible if the range is `NonEmpty`.)
     pub fn start(&self) -> Index<'id, I, Emptiness> {
-        unsafe { Index::new_any(self.start.idx) }
+        unsafe { Index::new_any(self.start.untrusted()) }
     }
 
     /// The ending index.
@@ -223,7 +108,7 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
     ) -> Option<(Range<'id, I, Unknown>, Range<'id, I, P>)> {
         if index >= self.start && index <= self.end {
             Some((Range::from(self.start(), index), unsafe {
-                Range::new_any(index.idx, self.end.idx)
+                Range::new_any(index.untrusted(), self.end.untrusted())
             }))
         } else {
             None
@@ -255,11 +140,11 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
         &self,
         other: Range<'id, I, Q>,
     ) -> Option<Range<'id, I, <(Emptiness, Q) as ProofAdd>::Sum>>
-    where
-        (Emptiness, Q): ProofAdd,
+        where
+            (Emptiness, Q): ProofAdd,
     {
         if self.end == other.start {
-            unsafe { Some(Range::new_any(self.start.idx, other.end.idx)) }
+            unsafe { Some(Range::new_any(self.start.untrusted(), other.end.untrusted())) }
         } else {
             None
         }
@@ -270,12 +155,12 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
         &self,
         other: Range<'id, I, Q>,
     ) -> Range<'id, I, <(Emptiness, Q) as ProofAdd>::Sum>
-    where
-        (Emptiness, Q): ProofAdd,
+        where
+            (Emptiness, Q): ProofAdd,
     {
         let start = cmp::min(self.start, other.start);
         let end = cmp::max(self.end, other.end);
-        unsafe { Range::new_any(start.idx, end.idx) }
+        unsafe { Range::new_any(start.untrusted(), end.untrusted()) }
     }
 
     /// Create two empty ranges, at the front and the back of this range.
@@ -324,8 +209,8 @@ impl<'id, I: Idx, Emptiness> From<ops::Range<Index<'id, I, Emptiness>>> for Rang
 impl<'id, I: Idx, Emptiness> fmt::Debug for Range<'id, I, Emptiness> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Range<'id>")
-            .field(&self.start.idx)
-            .field(&self.end.idx)
+            .field(&self.start.untrusted())
+            .field(&self.end.untrusted())
             .finish()
     }
 }
@@ -349,13 +234,4 @@ impl<'id, I: Idx, Emptiness> Hash for Range<'id, I, Emptiness> {
         self.start.hash(state);
         self.end.hash(state);
     }
-}
-
-/// The error returned when failing to construct an arbitrary index.
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum IndexError {
-    /// The provided raw index was out of bounds of the container.
-    OutOfBounds,
-    /// The provided raw index was in bounds but not on an item border.
-    Invalid,
 }

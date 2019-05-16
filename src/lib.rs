@@ -54,7 +54,7 @@ use {crate::traits::TrustedContainer, core::ops, debug_unreachable::debug_unreac
 
 pub use crate::{
     container::Container,
-    index::{Index, IndexError, Range},
+    index::{Index, Range},
 };
 
 /// Create an indexing scope for an owned container.
@@ -145,4 +145,13 @@ impl Character {
             .nth(0)
             .unwrap_or_else(|| unsafe { debug_unreachable!() })
     }
+}
+
+/// The error returned when failing to construct an arbitrary index.
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum IndexError {
+    /// The provided raw index was out of bounds of the container.
+    OutOfBounds,
+    /// The provided raw index was in bounds but not on an item border.
+    Invalid,
 }

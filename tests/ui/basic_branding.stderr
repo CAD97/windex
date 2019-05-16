@@ -25,8 +25,8 @@ note: ...but the lifetime must also be valid for the anonymous lifetime #3 defin
 29 | |         });
    | |_________^
    = note: ...so that the types are compatible:
-           expected std::ops::Index<indexing::index::Range<'_>>
-              found std::ops::Index<indexing::index::Range<'_>>
+           expected std::ops::Index<indexing::index::range::Range<'_>>
+              found std::ops::Index<indexing::index::range::Range<'_>>
 
 error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'id` due to conflicting requirements
   --> $DIR/basic_branding.rs:35:14
@@ -55,7 +55,7 @@ note: ...but the lifetime must also be valid for the anonymous lifetime #3 defin
 36 | |         });
    | |_________^
    = note: ...so that the types are compatible:
-           expected std::ops::Index<indexing::index::Range<'_>>
-              found std::ops::Index<indexing::index::Range<'_>>
+           expected std::ops::Index<indexing::index::range::Range<'_>>
+              found std::ops::Index<indexing::index::range::Range<'_>>
 
 For more information about this error, try `rustc --explain E0495`.

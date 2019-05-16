@@ -2,7 +2,7 @@
 use crate::{scope, scope_ref};
 use {
     crate::{
-        index::{Index, IndexError, Range},
+        Index, IndexError, Range,
         proof::{Id, NonEmpty, Unknown},
         traits::{Idx, TrustedContainer, TrustedItem},
     },

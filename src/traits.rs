@@ -3,51 +3,8 @@ use {
         proof::{NonEmpty, Unknown},
         Container, Index, IndexError,
     },
-    core::{cmp, convert::TryFrom, fmt, hash::Hash, num::NonZeroUsize, ops},
+    core::{cmp, ops},
 };
-
-/// Unsigned integers able to be used as a trusted index.
-pub unsafe trait Idx: Copy + Ord + Hash
-where
-    Self: fmt::Debug,
-{
-    //noinspection RsSelfConvention
-    fn as_usize(self) -> usize;
-    fn from_usize(i: usize) -> Option<Self>;
-    fn zero() -> Self;
-    fn add(self, increment: usize) -> Self;
-    fn sub(self, decrement: usize) -> Self;
-    fn div(self, denominator: NonZeroUsize) -> Self;
-}
-
-#[allow(non_snake_case)]
-macro_rules! impl_Idx {
-    ($($ty:ty),*$(,)?) => {
-        $(unsafe impl Idx for $ty {
-            fn as_usize(self) -> usize { self as usize } // we need u32 support, 64 KiB isn't enough
-            fn from_usize(i: usize) -> Option<Self> { Self::try_from(i).ok() }
-            fn zero() -> Self { 0 }
-            fn add(self, increment: usize) -> Self {
-                // FUTURE: See if this is always sound in the face of wrapping arithmetic
-                Self::from_usize(increment).and_then(|i| self.checked_add(i)).expect("increment")
-            }
-            fn sub(self, decrement: usize) -> Self {
-                self - Self::from_usize(decrement).expect("increment")
-            }
-            fn div(self, denominator: NonZeroUsize) -> Self {
-                let denom = Self::from_usize(denominator.get()).expect("div");
-                self.checked_div(denom).expect("div")
-            }
-        })*
-    };
-}
-
-impl_Idx! {
-    u8,
-    u16,
-    u32,
-    usize,
-}
 
 /// Types that can back a trusted container: it can have indices and ranges
 /// that are trusted to be in bounds. See also [`TrustedItem`], [`TrustedUnit`].
@@ -58,7 +15,7 @@ pub unsafe trait TrustedContainer {
     type Slice: ?Sized;
 
     /// The length of the container in base item units.
-    fn unit_len(&self) -> usize;
+    fn unit_len(&self) -> u32;
 
     unsafe fn get_unchecked(&self, i: usize) -> &Self::Item;
     unsafe fn slice_unchecked(&self, r: ops::Range<usize>) -> &Self::Slice;
@@ -69,7 +26,7 @@ pub unsafe trait TrustedContainerMut: TrustedContainer {
     unsafe fn slice_unchecked_mut(&mut self, r: ops::Range<usize>) -> &Self::Slice;
 }
 
-// FUTURE: feature(arbitrary_self_types) for `this: Index<'id, I, _>`?
+// FUTURE: feature(arbitrary_self_types) for `this: Index<'id, _>`?
 /// An item within a [`TrustedContainer`].
 ///
 /// Note that raw indices are _unit_ indices, not item indices. One item (e.g.
@@ -86,16 +43,15 @@ where
     /// The index for one-past-the-end of the container is a valid index.
     /// This method conveys no emptiness proof (use
     /// [`vet_inbounds`][`TrustedItem::vet_inbounds`] for that).
-    fn vet<'id, I: Idx>(
-        idx: I,
+    fn vet<'id>(
+        idx: u32,
         container: &Container<'id, Array>,
-    ) -> Result<Index<'id, I, Unknown>, IndexError> {
+    ) -> Result<Index<'id, Unknown>, IndexError> {
         let len = container.end().untrusted();
-        match idx.as_usize() {
+        match idx {
             i if i == len => unsafe { Ok(Index::new(idx)) },
             i if i < len => unsafe {
                 Self::vet_inbounds(idx, container)
-                    .as_ref()
                     .map(Index::erased)
                     .ok_or(IndexError::Invalid)
             },
@@ -107,26 +63,26 @@ where
     ///
     /// This assumes a proof that the raw index is inbounds. If you
     /// don't have a proof, use [`vet`][`TrustedItem::vet`] instead.
-    unsafe fn vet_inbounds<'id, I: Idx>(
-        idx: I,
+    unsafe fn vet_inbounds<'id>(
+        idx: u32,
         container: &Container<'id, Array>,
-    ) -> Option<Index<'id, I, NonEmpty>>;
+    ) -> Option<Index<'id, NonEmpty>>;
 
     /// The largest trusted index less than or equal to this untrusted index.
-    fn align<'id, I: Idx>(idx: I, container: &Container<'id, Array>) -> Index<'id, I, Unknown>;
+    fn align<'id>(idx: u32, container: &Container<'id, Array>) -> Index<'id, Unknown>;
 
     /// Increment an index to the next item, potentially resulting in an index
     /// that is one-past-the-end of the container.
-    fn after<'id, I: Idx>(
-        this: Index<'id, I, NonEmpty>,
+    fn after<'id>(
+        this: Index<'id, NonEmpty>,
         container: &Container<'id, Array>,
-    ) -> Index<'id, I, Unknown>;
+    ) -> Index<'id, Unknown>;
 
     /// Advance an index to the next item, if a next item exists.
-    fn advance<'id, I: Idx>(
-        this: Index<'id, I, NonEmpty>,
+    fn advance<'id>(
+        this: Index<'id, NonEmpty>,
         container: &Container<'id, Array>,
-    ) -> Option<Index<'id, I, NonEmpty>> {
+    ) -> Option<Index<'id, NonEmpty>> {
         let after = Self::after(this, container);
         // TODO: This should be `Index::nonempty_in`
         if after < container.end() {
@@ -137,12 +93,12 @@ where
     }
 
     /// Decrement an index to the previous item, if a previous item exists.
-    fn before<'id, I: Idx, P>(
-        this: Index<'id, I, P>,
+    fn before<'id, P>(
+        this: Index<'id, P>,
         container: &Container<'id, Array>,
-    ) -> Option<Index<'id, I, NonEmpty>> {
-        if this.untrusted() > I::zero() {
-            let aligned = Self::align(this.untrusted().sub(1), container);
+    ) -> Option<Index<'id, NonEmpty>> {
+        if this.untrusted() > 0 {
+            let aligned = Self::align(this.untrusted() - 1, container);
             unsafe { Some(Index::new_nonempty(aligned.untrusted())) }
         } else {
             None
@@ -163,11 +119,11 @@ where
     /// The index for one-past-the-end of the container is a valid index.
     /// This method conveys no emptiness proof (use
     /// [`vet_inbounds`][`TrustedUnit::vet_inbounds`] for that).
-    fn unit_vet<'id, I: Idx>(
-        idx: I,
+    fn unit_vet<'id>(
+        idx: u32,
         container: &Container<'id, Array>,
-    ) -> Result<Index<'id, I, Unknown>, IndexError> {
-        if idx.as_usize() <= container.unit_len() {
+    ) -> Result<Index<'id, Unknown>, IndexError> {
+        if idx <= container.unit_len() {
             Ok(unsafe { Index::new(idx) })
         } else {
             Err(IndexError::OutOfBounds)
@@ -178,35 +134,32 @@ where
     ///
     /// This assumes a proof that the raw index is inbounds. If you
     /// don't have a proof, use [`vet`][`TrustedUnit::vet`] instead.
-    unsafe fn unit_vet_inbounds<'id, I: Idx>(
-        idx: I,
+    unsafe fn unit_vet_inbounds<'id>(
+        idx: u32,
         _: &Container<'id, Array>,
-    ) -> Option<Index<'id, I, NonEmpty>> {
+    ) -> Option<Index<'id, NonEmpty>> {
         Some(Index::new_nonempty(idx))
     }
 
     /// The largest trusted index less than or equal to this untrusted index.
-    fn unit_align<'id, I: Idx>(
-        idx: I,
-        container: &Container<'id, Array>,
-    ) -> Index<'id, I, Unknown> {
+    fn unit_align<'id>(idx: u32, container: &Container<'id, Array>) -> Index<'id, Unknown> {
         unsafe { Index::new(cmp::min(idx, container.end().untrusted())) }
     }
 
     /// Increment an index to the next item, potentially resulting in an index
     /// that is one-past-the-end of the container.
     #[allow(clippy::needless_lifetimes)]
-    fn unit_after<'id, I: Idx>(this: Index<'id, I, NonEmpty>) -> Index<'id, I, Unknown> {
-        unsafe { Index::new(this.untrusted().add(1)) }
+    fn unit_after<'id>(this: Index<'id, NonEmpty>) -> Index<'id, Unknown> {
+        unsafe { Index::new(this.untrusted() + 1) }
     }
 
     /// Advance an index to the next item, if a next item exists.
-    fn unit_advance<'id, I: Idx>(
-        this: Index<'id, I, NonEmpty>,
+    fn unit_advance<'id>(
+        this: Index<'id, NonEmpty>,
         container: &Container<'id, Array>,
-    ) -> Option<Index<'id, I, NonEmpty>> {
-        if this.untrusted().as_usize() < container.unit_len() {
-            unsafe { Some(Index::new_nonempty(this.untrusted().add(1))) }
+    ) -> Option<Index<'id, NonEmpty>> {
+        if this.untrusted() < container.unit_len() {
+            unsafe { Some(Index::new_nonempty(this.untrusted() + 1)) }
         } else {
             None
         }
@@ -214,9 +167,9 @@ where
 
     /// Decrement an index to the previous item, if a previous item exists.
     #[allow(clippy::needless_lifetimes)]
-    fn unit_before<'id, I: Idx, P>(this: Index<'id, I, P>) -> Option<Index<'id, I, NonEmpty>> {
-        if this.untrusted() > I::zero() {
-            unsafe { Some(Index::new_nonempty(this.untrusted().sub(1))) }
+    fn unit_before<'id, P>(this: Index<'id, P>) -> Option<Index<'id, NonEmpty>> {
+        if this.untrusted() > 0 {
+            unsafe { Some(Index::new_nonempty(this.untrusted() - 1)) }
         } else {
             None
         }
@@ -228,42 +181,42 @@ macro_rules! __trusted_item_forwarding {
         unsafe impl<$($bounds)*> TrustedItem<$Array> for $T {
             type Unit = $T;
 
-            fn vet<'id, I: Idx>(
-                idx: I,
+            fn vet<'id>(
+                idx: u32,
                 container: &Container<'id, $Array>,
-            ) -> Result<Index<'id, I, Unknown>, IndexError> {
+            ) -> Result<Index<'id, Unknown>, IndexError> {
                 <$T>::unit_vet(idx, container)
             }
 
-            unsafe fn vet_inbounds<'id, I: Idx>(
-                idx: I,
+            unsafe fn vet_inbounds<'id>(
+                idx: u32,
                 container: &Container<'id, $Array>,
-            ) -> Option<Index<'id, I, NonEmpty>> {
+            ) -> Option<Index<'id, NonEmpty>> {
                 <$T>::unit_vet_inbounds(idx, container)
             }
 
-            fn align<'id, I: Idx>(idx: I, container: &Container<'id, $Array>) -> Index<'id, I, Unknown> {
+            fn align<'id>(idx: u32, container: &Container<'id, $Array>) -> Index<'id, Unknown> {
                 <$T>::unit_align(idx, container)
             }
 
-            fn after<'id, I: Idx>(
-                this: Index<'id, I, NonEmpty>,
+            fn after<'id>(
+                this: Index<'id, NonEmpty>,
                 _: &Container<'id, $Array>,
-            ) -> Index<'id, I, Unknown> {
+            ) -> Index<'id, Unknown> {
                 <$T>::unit_after(this)
             }
 
-            fn advance<'id, I: Idx>(
-                this: Index<'id, I, NonEmpty>,
+            fn advance<'id>(
+                this: Index<'id, NonEmpty>,
                 container: &Container<'id, $Array>,
-            ) -> Option<Index<'id, I, NonEmpty>> {
+            ) -> Option<Index<'id, NonEmpty>> {
                 <$T>::unit_advance(this, container)
             }
 
-            fn before<'id, I: Idx, P>(
-                this: Index<'id, I, P>,
+            fn before<'id, P>(
+                this: Index<'id, P>,
                 _: &Container<'id, $Array>,
-            ) -> Option<Index<'id, I, NonEmpty>> {
+            ) -> Option<Index<'id, NonEmpty>> {
                 <$T>::unit_before(this)
             }
         }

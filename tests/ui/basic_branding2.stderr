@@ -5,5 +5,5 @@ error: borrowed data cannot be stored outside of its closure
   |         --                    ----- ...because it cannot outlive this closure
   |         |
   |         borrowed data cannot be stored into here...
-8 |         let r = arr.range::<u32>();        //~ ERROR borrowed data cannot be stored outside of its closure
+8 |         let r = arr.range();        //~ ERROR borrowed data cannot be stored outside of its closure
   |                     ^^^^^ cannot be stored outside of its closure

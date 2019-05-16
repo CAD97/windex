@@ -2,9 +2,9 @@
 use crate::{scope, scope_ref};
 use {
     crate::{
-        Index, IndexError, Range,
         proof::{Id, NonEmpty, Unknown},
-        traits::{Idx, TrustedContainer, TrustedItem},
+        traits::{TrustedContainer, TrustedItem},
+        Index, IndexError, Range,
     },
     core::{fmt, ops},
 };
@@ -58,33 +58,32 @@ where
     }
 
     /// The length of the container in base item units.
-    pub fn unit_len(&self) -> usize {
+    pub fn unit_len(&self) -> u32 {
         self.array.unit_len()
     }
 
     /// The zero index without a proof of contents.
-    pub fn start<I: Idx>(&self) -> Index<'id, I, Unknown> {
-        unsafe { Index::new(I::zero()) }
+    pub fn start(&self) -> Index<'id, Unknown> {
+        unsafe { Index::new(0) }
     }
 
     /// The index one past the end of this container.
-    pub fn end<I: Idx>(&self) -> Index<'id, I, Unknown> {
-        let len = I::from_usize(self.unit_len()).expect("len");
-        unsafe { Index::new(len) }
+    pub fn end(&self) -> Index<'id, Unknown> {
+        unsafe { Index::new(self.unit_len()) }
     }
 
     /// The empty range `0..0`.
-    pub fn empty_range<I: Idx>(&self) -> Range<'id, I, Unknown> {
+    pub fn empty_range(&self) -> Range<'id, Unknown> {
         Range::from(self.start(), self.start())
     }
 
     /// The full range of the container.
-    pub fn range<I: Idx>(&self) -> Range<'id, I, Unknown> {
+    pub fn range(&self) -> Range<'id, Unknown> {
         Range::from(self.start(), self.end())
     }
 
     /// Vet an absolute index.
-    pub fn vet<I: Idx>(&self, idx: I) -> Result<Index<'id, I, NonEmpty>, IndexError> {
+    pub fn vet(&self, idx: u32) -> Result<Index<'id, NonEmpty>, IndexError> {
         if idx < self.end().untrusted() {
             unsafe { TrustedItem::vet_inbounds(idx, self).ok_or(IndexError::Invalid) }
         } else {
@@ -94,10 +93,7 @@ where
 
     /// Vet an absolute range.
     // Future: Error type `EitherOrBoth<IndexError, IndexError>`?
-    pub fn vet_range<I: Idx>(
-        &self,
-        r: ops::Range<I>,
-    ) -> Result<Range<'id, I, Unknown>, IndexError> {
+    pub fn vet_range(&self, r: ops::Range<u32>) -> Result<Range<'id, Unknown>, IndexError> {
         Ok(Range::from(
             TrustedItem::vet(r.start, self)?,
             TrustedItem::vet(r.end, self)?,
@@ -106,19 +102,16 @@ where
 
     /// Split the container in two at the given index,
     /// such that the second range contains the index.
-    pub fn split_at<I: Idx, P>(
-        &self,
-        idx: Index<'id, I, P>,
-    ) -> (Range<'id, I, Unknown>, Range<'id, I, P>) {
+    pub fn split_at<P>(&self, idx: Index<'id, P>) -> (Range<'id, Unknown>, Range<'id, P>) {
         (self.before(idx), self.after_inclusive(idx))
     }
 
     /// Split the container in two after the given index,
     /// such that the first range contains the index.
-    pub fn split_after<I: Idx>(
+    pub fn split_after(
         &self,
-        idx: Index<'id, I, NonEmpty>,
-    ) -> (Range<'id, I, NonEmpty>, Range<'id, I, Unknown>) {
+        idx: Index<'id, NonEmpty>,
+    ) -> (Range<'id, NonEmpty>, Range<'id, Unknown>) {
         (self.before_inclusive(idx), self.after(idx))
     }
 
@@ -126,67 +119,61 @@ where
     ///
     /// The input `r` and return values `(s, t)` cover the whole container in
     /// the order `s`, `r`, `t`.
-    pub fn split_around<I: Idx, P>(
-        &self,
-        r: Range<'id, I, P>,
-    ) -> (Range<'id, I, Unknown>, Range<'id, I, Unknown>) {
+    pub fn split_around<P>(&self, r: Range<'id, P>) -> (Range<'id, Unknown>, Range<'id, Unknown>) {
         (self.before(r.start()), self.after_inclusive(r.end()))
     }
 
     /// Return the range before but not including the index.
-    pub fn before<I: Idx, P>(&self, idx: Index<'id, I, P>) -> Range<'id, I, Unknown> {
+    pub fn before<P>(&self, idx: Index<'id, P>) -> Range<'id, Unknown> {
         Range::from(self.start(), idx)
     }
 
     /// Return the range before the index, inclusive.
-    pub fn before_inclusive<I: Idx>(
-        &self,
-        idx: Index<'id, I, NonEmpty>,
-    ) -> Range<'id, I, NonEmpty> {
+    pub fn before_inclusive(&self, idx: Index<'id, NonEmpty>) -> Range<'id, NonEmpty> {
         let after = TrustedItem::after(idx, self);
         unsafe { Range::new_nonempty(self.start().untrusted(), after.untrusted()) }
     }
 
     /// Return the range after but not including the index.
-    pub fn after<I: Idx>(&self, idx: Index<'id, I, NonEmpty>) -> Range<'id, I, Unknown> {
+    pub fn after(&self, idx: Index<'id, NonEmpty>) -> Range<'id, Unknown> {
         let after = TrustedItem::after(idx, self);
         Range::from(after, self.end())
     }
 
     /// Return the range after the index, inclusive.
-    pub fn after_inclusive<I: Idx, P>(&self, idx: Index<'id, I, P>) -> Range<'id, I, P> {
+    pub fn after_inclusive<P>(&self, idx: Index<'id, P>) -> Range<'id, P> {
         unsafe { Range::new_any(idx.untrusted(), self.end().untrusted()) }
     }
 
     /// Advance an index to the next item in the container, if there is one.
-    pub fn advance<I: Idx>(&self, idx: Index<'id, I, NonEmpty>) -> Option<Index<'id, I, NonEmpty>> {
+    pub fn advance(&self, idx: Index<'id, NonEmpty>) -> Option<Index<'id, NonEmpty>> {
         TrustedItem::advance(idx, self)
     }
 
     /// Advance an index by a given base unit offset,
     /// if the index at said offset is a valid item index.
-    pub fn advance_by<I: Idx, P>(
+    pub fn advance_by<P>(
         &self,
-        idx: Index<'id, I, P>,
-        offset: usize,
-    ) -> Result<Index<'id, I, NonEmpty>, IndexError> {
-        self.vet(idx.untrusted().add(offset))
+        idx: Index<'id, P>,
+        offset: u32,
+    ) -> Result<Index<'id, NonEmpty>, IndexError> {
+        self.vet(idx.untrusted() + offset)
     }
 
     /// Retreat an index to the prior item in the container, if there is one.
-    pub fn retreat<I: Idx, P>(&self, idx: Index<'id, I, P>) -> Option<Index<'id, I, NonEmpty>> {
+    pub fn retreat<P>(&self, idx: Index<'id, P>) -> Option<Index<'id, NonEmpty>> {
         TrustedItem::before(idx, self)
     }
 
     /// Decrease an index by a given base unit offset,
     /// if the index at said offset is a valid item index.
-    pub fn decrease_by<I: Idx, P>(
+    pub fn decrease_by<P>(
         &self,
-        idx: Index<'id, I, P>,
-        offset: usize,
-    ) -> Result<Index<'id, I, NonEmpty>, IndexError> {
-        if idx.untrusted().as_usize() >= offset {
-            self.vet(idx.untrusted().sub(offset))
+        idx: Index<'id, P>,
+        offset: u32,
+    ) -> Result<Index<'id, NonEmpty>, IndexError> {
+        if idx.untrusted() >= offset {
+            self.vet(idx.untrusted() - offset)
         } else {
             Err(IndexError::OutOfBounds)
         }
@@ -215,55 +202,50 @@ where
     }
 }
 
-impl<'id, Array: ?Sized, I> ops::Index<Index<'id, I, NonEmpty>> for Container<'id, Array>
+impl<'id, Array: ?Sized> ops::Index<Index<'id, NonEmpty>> for Container<'id, Array>
 where
     Array: TrustedContainer,
-    I: Idx,
 {
     type Output = Array::Item;
 
-    fn index(&self, index: Index<'id, I, NonEmpty>) -> &Self::Output {
-        unsafe { self.array.get_unchecked(index.untrusted().as_usize()) }
+    fn index(&self, index: Index<'id, NonEmpty>) -> &Self::Output {
+        unsafe { self.array.get_unchecked(index.untrusted() as usize) }
     }
 }
 
-impl<'id, Array: ?Sized, I, P> ops::Index<Range<'id, I, P>> for Container<'id, Array>
+impl<'id, Array: ?Sized, P> ops::Index<Range<'id, P>> for Container<'id, Array>
 where
     Array: TrustedContainer,
-    I: Idx,
 {
     type Output = Array::Slice;
 
-    fn index(&self, r: Range<'id, I, P>) -> &Self::Output {
+    fn index(&self, r: Range<'id, P>) -> &Self::Output {
         unsafe {
             self.array
-                .slice_unchecked(r.start().untrusted().as_usize()..r.end().untrusted().as_usize())
+                .slice_unchecked(r.start().untrusted() as usize..r.end().untrusted() as usize)
         }
     }
 }
 
-impl<'id, Array: ?Sized, I, P> ops::Index<ops::RangeFrom<Index<'id, I, P>>>
-    for Container<'id, Array>
+impl<'id, Array: ?Sized, P> ops::Index<ops::RangeFrom<Index<'id, P>>> for Container<'id, Array>
 where
     Array: TrustedContainer,
-    I: Idx,
 {
     type Output = Array::Slice;
 
-    fn index(&self, r: ops::RangeFrom<Index<'id, I, P>>) -> &Self::Output {
-        &self[Range::from(r.start, self.end())]
+    fn index(&self, r: ops::RangeFrom<Index<'id, P>>) -> &Self::Output {
+        &self[self.after_inclusive(r.start)]
     }
 }
 
-impl<'id, Array: ?Sized, I, P> ops::Index<ops::RangeTo<Index<'id, I, P>>> for Container<'id, Array>
+impl<'id, Array: ?Sized, P> ops::Index<ops::RangeTo<Index<'id, P>>> for Container<'id, Array>
 where
     Array: TrustedContainer,
-    I: Idx,
 {
     type Output = Array::Slice;
 
-    fn index(&self, r: ops::RangeTo<Index<'id, I, P>>) -> &Self::Output {
-        &self[Range::from(self.start(), r.end)]
+    fn index(&self, r: ops::RangeTo<Index<'id, P>>) -> &Self::Output {
+        &self[self.before(r.end)]
     }
 }
 
@@ -274,7 +256,7 @@ where
     type Output = Array::Slice;
 
     fn index(&self, _: ops::RangeFull) -> &Self::Output {
-        &self[Range::<usize, _>::from(self.start(), self.end())]
+        &self[self.range()]
     }
 }
 

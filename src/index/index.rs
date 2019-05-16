@@ -2,9 +2,9 @@
 use crate::scope;
 use {
     crate::{
-        Container, Range,
         proof::{Id, NonEmpty, Unknown},
-        traits::{Idx, TrustedContainer},
+        traits::TrustedContainer,
+        Container, Range,
     },
     core::{
         cmp, fmt,
@@ -21,29 +21,34 @@ use {
 /// The type parameter `Emptiness` determines if the index is followable.
 /// A `NonEmpty` index points to a valid element. An `Unknown` index is
 /// unknown, or it points to an edge index (one past the end).
-pub struct Index<'id, I: Idx = u32, Emptiness = NonEmpty> {
+//
+//  # Safety
+//
+//  The raw index must be 0 <= idx <= len for the branded container.
+//  When Emptiness = NonEmpty, 0 <= idx < len.
+pub struct Index<'id, Emptiness = NonEmpty> {
     #[allow(unused)]
     id: Id<'id>,
-    idx: I,
+    idx: u32,
     phantom: PhantomData<Emptiness>,
 }
 
 // ~~~ Private Helpers ~~~ //
 
-impl<'id, I: Idx> Index<'id, I, Unknown> {
-    pub(crate) unsafe fn new(idx: I) -> Self {
+impl<'id> Index<'id, Unknown> {
+    pub(crate) unsafe fn new(idx: u32) -> Self {
         Index::new_any(idx)
     }
 }
 
-impl<'id, I: Idx> Index<'id, I, NonEmpty> {
-    pub(crate) unsafe fn new_nonempty(idx: I) -> Self {
+impl<'id> Index<'id, NonEmpty> {
+    pub(crate) unsafe fn new_nonempty(idx: u32) -> Self {
         Index::new_any(idx)
     }
 }
 
-impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
-    pub(crate) unsafe fn new_any(idx: I) -> Self {
+impl<'id, Emptiness> Index<'id, Emptiness> {
+    pub(crate) unsafe fn new_any(idx: u32) -> Self {
         Index {
             id: Id::default(),
             idx,
@@ -51,34 +56,34 @@ impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
         }
     }
 
-    pub(crate) unsafe fn trusted(&self) -> Index<'id, I, NonEmpty> {
+    pub(crate) unsafe fn trusted(self) -> Index<'id, NonEmpty> {
         Index::new_nonempty(self.untrusted())
     }
 }
 
 // ~~~ Discarding Proofs ~~~ //
 
-impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
+impl<'id, Emptiness> Index<'id, Emptiness> {
     /// This index without the branding.
-    pub fn untrusted(&self) -> I {
+    pub fn untrusted(self) -> u32 {
         self.idx
     }
 
     /// This index without the emptiness proof.
-    pub fn erased(&self) -> Index<'id, I, Unknown> {
+    pub fn erased(self) -> Index<'id, Unknown> {
         unsafe { Index::new(self.idx) }
     }
 }
 
 // ~~~ Gaining Proofs ~~~ //
 
-impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
+impl<'id, Emptiness> Index<'id, Emptiness> {
     /// Try to create a proof that this index is nonempty.
     pub fn nonempty_in<Array: ?Sized + TrustedContainer>(
-        &self,
+        self,
         container: &Container<'id, Array>,
-    ) -> Option<Index<'id, I, NonEmpty>> {
-        if *self < container.end() {
+    ) -> Option<Index<'id, NonEmpty>> {
+        if self < container.end() {
             unsafe { Some(self.trusted()) }
         } else {
             None
@@ -86,8 +91,8 @@ impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
     }
 
     /// Try to create a proof that this index is within a range.
-    pub fn in_range<Q>(&self, range: Range<'id, I, Q>) -> Option<Index<'id, I, NonEmpty>> {
-        if *self >= range.start() && *self < range.end() {
+    pub fn in_range<Q>(self, range: Range<'id, Q>) -> Option<Index<'id, NonEmpty>> {
+        if self >= range.start() && self < range.end() {
             unsafe { Some(self.trusted()) }
         } else {
             None
@@ -97,39 +102,41 @@ impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
 
 // ~~~ Derive traits but without unneeded bounds ~~~ //
 
-impl<'id, I: Idx, Emptiness> fmt::Debug for Index<'id, I, Emptiness> {
+impl<'id, Emptiness> fmt::Debug for Index<'id, Emptiness> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Index<'id>").field(&self.idx).finish()
     }
 }
 
-impl<'id, I: Idx, Emptiness> Copy for Index<'id, I, Emptiness> {}
-impl<'id, I: Idx, Emptiness> Clone for Index<'id, I, Emptiness> {
+impl<'id, Emptiness> Copy for Index<'id, Emptiness> {}
+
+impl<'id, Emptiness> Clone for Index<'id, Emptiness> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'id, I: Idx, Emptiness> Ord for Index<'id, I, Emptiness> {
+impl<'id, Emptiness> Ord for Index<'id, Emptiness> {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.idx.cmp(&other.idx)
     }
 }
 
-impl<'id, I: Idx, P, Q> PartialOrd<Index<'id, I, Q>> for Index<'id, I, P> {
-    fn partial_cmp(&self, other: &Index<'id, I, Q>) -> Option<cmp::Ordering> {
+impl<'id, P, Q> PartialOrd<Index<'id, Q>> for Index<'id, P> {
+    fn partial_cmp(&self, other: &Index<'id, Q>) -> Option<cmp::Ordering> {
         self.idx.partial_cmp(&other.idx)
     }
 }
 
-impl<'id, I: Idx, Emptiness> Eq for Index<'id, I, Emptiness> {}
-impl<'id, I: Idx, P, Q> PartialEq<Index<'id, I, Q>> for Index<'id, I, P> {
-    fn eq(&self, other: &Index<'id, I, Q>) -> bool {
+impl<'id, Emptiness> Eq for Index<'id, Emptiness> {}
+
+impl<'id, P, Q> PartialEq<Index<'id, Q>> for Index<'id, P> {
+    fn eq(&self, other: &Index<'id, Q>) -> bool {
         self.idx.eq(&other.idx)
     }
 }
 
-impl<'id, I: Idx, Emptiness> Hash for Index<'id, I, Emptiness> {
+impl<'id, Emptiness> Hash for Index<'id, Emptiness> {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.idx.hash(state);
     }

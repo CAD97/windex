@@ -4,7 +4,7 @@ use indexing::scope;
 fn join_add_proof() {
     let data = [1, 2, 3];
     scope(&data[..], move |v| {
-        let r = v.range::<u32>();
+        let r = v.range();
         if let Some(r) = r.nonempty() {
             let (front, back) = r.frontiers();
 

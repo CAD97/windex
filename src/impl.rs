@@ -1,6 +1,6 @@
 use {
     crate::{proof::*, traits::*, *},
-    core::ops,
+    core::{convert::TryFrom, ops},
     debug_unreachable::debug_unreachable,
 };
 
@@ -15,7 +15,7 @@ where
     type Item = <D::Target as TrustedContainer>::Item;
     type Slice = <D::Target as TrustedContainer>::Slice;
 
-    fn unit_len(&self) -> usize {
+    fn unit_len(&self) -> u32 {
         <D::Target>::unit_len(self)
     }
 
@@ -51,42 +51,42 @@ where
 {
     type Unit = T::Unit;
 
-    fn vet<'id, I: Idx>(
-        idx: I,
+    fn vet<'id>(
+        idx: u32,
         container: &Container<'id, D>,
-    ) -> Result<Index<'id, I, Unknown>, IndexError> {
+    ) -> Result<Index<'id, Unknown>, IndexError> {
         T::vet(idx, container)
     }
 
-    unsafe fn vet_inbounds<'id, I: Idx>(
-        idx: I,
+    unsafe fn vet_inbounds<'id>(
+        idx: u32,
         container: &Container<'id, D>,
-    ) -> Option<Index<'id, I, NonEmpty>> {
+    ) -> Option<Index<'id, NonEmpty>> {
         T::vet_inbounds(idx, container)
     }
 
-    fn align<'id, I: Idx>(idx: I, container: &Container<'id, D>) -> Index<'id, I, Unknown> {
+    fn align<'id>(idx: u32, container: &Container<'id, D>) -> Index<'id, Unknown> {
         T::align(idx, container)
     }
 
-    fn after<'id, I: Idx>(
-        this: Index<'id, I, NonEmpty>,
+    fn after<'id>(
+        this: Index<'id, NonEmpty>,
         container: &Container<'id, D>,
-    ) -> Index<'id, I, Unknown> {
+    ) -> Index<'id, Unknown> {
         T::after(this, container)
     }
 
-    fn advance<'id, I: Idx>(
-        this: Index<'id, I, NonEmpty>,
+    fn advance<'id>(
+        this: Index<'id, NonEmpty>,
         container: &Container<'id, D>,
-    ) -> Option<Index<'id, I, NonEmpty>> {
+    ) -> Option<Index<'id, NonEmpty>> {
         T::advance(this, container)
     }
 
-    fn before<'id, I: Idx, P>(
-        this: Index<'id, I, P>,
+    fn before<'id, P>(
+        this: Index<'id, P>,
         container: &Container<'id, D>,
-    ) -> Option<Index<'id, I, NonEmpty>> {
+    ) -> Option<Index<'id, NonEmpty>> {
         T::before(this, container)
     }
 }
@@ -97,8 +97,8 @@ unsafe impl<T> TrustedContainer for [T] {
     type Item = T;
     type Slice = [T];
 
-    fn unit_len(&self) -> usize {
-        self.len()
+    fn unit_len(&self) -> u32 {
+        u32::try_from(self.len()).unwrap()
     }
 
     unsafe fn get_unchecked(&self, i: usize) -> &Self::Item {
@@ -145,8 +145,8 @@ unsafe impl TrustedContainer for str {
     type Item = Character;
     type Slice = str;
 
-    fn unit_len(&self) -> usize {
-        self.len()
+    fn unit_len(&self) -> u32 {
+        u32::try_from(self.len()).unwrap()
     }
 
     unsafe fn get_unchecked(&self, i: usize) -> &Self::Item {
@@ -197,26 +197,23 @@ unsafe impl TrustedContainerMut for str {
 unsafe impl TrustedItem<str> for Character {
     type Unit = u8;
 
-    unsafe fn vet_inbounds<'id, I: Idx>(
-        idx: I,
+    unsafe fn vet_inbounds<'id>(
+        idx: u32,
         container: &Container<'id, str>,
-    ) -> Option<Index<'id, I, NonEmpty>> {
-        let leading_byte = *container
-            .untrusted()
-            .as_bytes()
-            .get_unchecked(idx.as_usize());
+    ) -> Option<Index<'id, NonEmpty>> {
+        let leading_byte = *container.untrusted().as_bytes().get_unchecked(idx as usize);
         if is_leading_byte(leading_byte) {
-            debug_assert!(container.untrusted().is_char_boundary(idx.as_usize()));
+            debug_assert!(container.untrusted().is_char_boundary(idx as usize));
             Some(Index::new_nonempty(idx))
         } else {
             None
         }
     }
 
-    fn align<'id, I: Idx>(idx: I, container: &Container<'id, str>) -> Index<'id, I, Unknown> {
-        let mut i = idx.as_usize();
+    fn align<'id>(idx: u32, container: &Container<'id, str>) -> Index<'id, Unknown> {
+        let mut i = idx;
 
-        if idx.as_usize() >= container.unit_len() {
+        if idx >= container.unit_len() {
             return container.end();
         }
 
@@ -224,26 +221,26 @@ unsafe impl TrustedItem<str> for Character {
         // The maximum UTF8 length is 4 bytes, so only check four
         for _ in 0..3 {
             unsafe {
-                let byte = *container.untrusted().as_bytes().get_unchecked(i);
+                let byte = *container.untrusted().as_bytes().get_unchecked(i as usize);
 
                 if is_leading_byte(byte) {
-                    debug_assert!(container.untrusted().is_char_boundary(i));
-                    return Index::new(idx);
+                    debug_assert!(container.untrusted().is_char_boundary(i as usize));
+                    return Index::new(i);
                 }
 
-                // This cannot overflow as the first byte of a string is a leading byte
-                i = i.checked_sub(1).unwrap_or_else(|| debug_unreachable!())
+                // This cannot underflow as the first byte of a string is a leading byte
+                i -= 1;
             }
         }
 
         unsafe { debug_unreachable!() }
     }
 
-    fn after<'id, I: Idx>(
-        this: Index<'id, I, NonEmpty>,
+    fn after<'id>(
+        this: Index<'id, NonEmpty>,
         container: &Container<'id, str>,
-    ) -> Index<'id, I, Unknown> {
+    ) -> Index<'id, Unknown> {
         let len = container[this].len();
-        unsafe { Index::new(this.untrusted().add(len)) }
+        unsafe { Index::new(this.untrusted() + len as u32) }
     }
 }

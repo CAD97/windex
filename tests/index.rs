@@ -4,7 +4,7 @@ use indexing::{scope, Index, Range};
 fn nonempty() {
     let data = [0, 1, 2, 3, 4, 5];
     scope(&data[..], |data| {
-        let mut r = data.range::<u32>().nonempty().unwrap();
+        let mut r = data.range().nonempty().unwrap();
         assert_eq!(data[r.start()], 0);
 
         assert!(r.advance_in(&data));
@@ -23,7 +23,7 @@ fn nonempty() {
 fn contains() {
     let data = [0, 1, 2, 3, 4, 5];
     scope(&data[..], |data| {
-        let r = data.range::<usize>();
+        let r = data.range();
         for i in 0..data.unit_len() {
             assert!(r.contains_in(i, &data).is_some());
             assert_eq!(r.contains_in(i, &data).unwrap(), data.vet(i).unwrap());

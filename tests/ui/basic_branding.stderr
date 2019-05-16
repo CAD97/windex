@@ -4,7 +4,7 @@ error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'id` 
 27 |             &arr2[r1]; //~ ERROR cannot infer an appropriate lifetime
    |              ^^^^^^^^
    |
-note: first, the lifetime cannot outlive the anonymous lifetime #2 defined on the body at 25:24...
+note: first, the lifetime cannot outlive the anonymous lifetime #3 defined on the body at 25:24...
   --> $DIR/basic_branding.rs:25:24
    |
 25 |       indices(&arr1[..], |arr1, r1| {
@@ -15,7 +15,7 @@ note: first, the lifetime cannot outlive the anonymous lifetime #2 defined on th
 29 | |         });
 30 | |     });
    | |_____^
-note: ...but the lifetime must also be valid for the anonymous lifetime #2 defined on the body at 26:28...
+note: ...but the lifetime must also be valid for the anonymous lifetime #3 defined on the body at 26:28...
   --> $DIR/basic_branding.rs:26:28
    |
 26 |           indices(&arr2[..], move |arr2, r2| {
@@ -34,7 +34,7 @@ error[E0495]: cannot infer an appropriate lifetime for lifetime parameter `'id` 
 35 |             &arr1[r2]; //~ ERROR cannot infer an appropriate lifetime
    |              ^^^^^^^^
    |
-note: first, the lifetime cannot outlive the anonymous lifetime #2 defined on the body at 32:24...
+note: first, the lifetime cannot outlive the anonymous lifetime #3 defined on the body at 32:24...
   --> $DIR/basic_branding.rs:32:24
    |
 32 |       indices(&arr1[..], |arr1, r1| {
@@ -45,7 +45,7 @@ note: first, the lifetime cannot outlive the anonymous lifetime #2 defined on th
 36 | |         });
 37 | |     });
    | |_____^
-note: ...but the lifetime must also be valid for the anonymous lifetime #2 defined on the body at 33:28...
+note: ...but the lifetime must also be valid for the anonymous lifetime #3 defined on the body at 33:28...
   --> $DIR/basic_branding.rs:33:28
    |
 33 |           indices(&arr2[..], move |arr2, r2| {

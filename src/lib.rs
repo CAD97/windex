@@ -57,17 +57,18 @@ pub use crate::{
     index::{Index, IndexError, Range},
 };
 
-/// Create an indexing scope for a container.
+/// Create an indexing scope for an owned container.
 ///
 /// The indexing scope is a closure that is passed a unique lifetime for the
 /// parameter `'id`; this lifetime brands the container and its indices and
 /// ranges, so that they are trusted to be in bounds.
 ///
 /// Indices and ranges branded with `'id` cannot leave the closure. The
-/// container can only be accessed through the `Container` wrapper passed as
-/// the first argument to the indexing scope.
-pub fn scope<Array: TrustedContainer, F, Out>(array: Array, f: F) -> Out
+/// container can only be trusted when accessed through the `Container` wrapper
+/// passed as the first argument to the indexing scope.
+pub fn scope_val<Array, F, Out>(array: Array, f: F) -> Out
 where
+    Array: TrustedContainer,
     F: for<'id> FnOnce(Container<'id, Array>) -> Out,
 {
     // This is where the magic happens. We bind the indexer and indices to the
@@ -89,12 +90,36 @@ where
     f(unsafe { Container::new(array) })
 }
 
-/// [`scope`], but for a backing container behind a reference
-/// (such as an unsized string slice).
-pub fn scope_ref<Array: TrustedContainer, F, Out>(array: &Array, f: F) -> Out
+/// Create an indexing scope for a borrowed container.
+///
+/// The indexing scope is a closure that is passed a unique lifetime for the
+/// parameter `'id`; this lifetime brands the container and its indices and
+/// ranges, so that they are trusted to be in bounds.
+///
+/// Indices and ranges branded with `'id` cannot leave the closure. The
+/// container can only be trusted when accessed through the `Container`
+/// wrapper passed as the first argument to the indexing scope.
+pub fn scope<Array: ?Sized, F, Out>(array: &Array, f: F) -> Out
 where
+    Array: TrustedContainer,
     F: for<'id> FnOnce(&'id Container<'id, Array>) -> Out,
 {
+    // This is where the magic happens. We bind the indexer and indices to the
+    // same invariant lifetime (a constraint established by F's definition).
+    // As such, each call to `indices` produces a unique signature that only
+    // these two values can share.
+    //
+    // Within this function, the borrow solver can choose literally any
+    // lifetime, including `'static`, but we don't care what the borrow solver
+    // does in *this* function. We only need to trick the solver in the
+    // caller's scope. Since borrowck doesn't do interprocedural analysis, it
+    // sees every call to this function produces values with some opaque fresh
+    // lifetime and can't unify any of them.
+    //
+    // In principle a "super borrowchecker" that does interprocedural analysis
+    // would break this design, but we could go out of our way to somehow bind
+    // the lifetime to the inside of this function, making it sound again.
+    // Rustc will never do such analysis, so we don't care.
     f(unsafe { &*(array as *const Array as *const Container<'_, Array>) })
 }
 

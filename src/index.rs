@@ -65,9 +65,9 @@ impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
 
 impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
     /// Try to create a proof that this index is nonempty.
-    pub fn nonempty_in<Array: TrustedContainer>(
+    pub fn nonempty_in<Array: ?Sized + TrustedContainer>(
         &self,
-        container: Container<'id, Array>,
+        container: &Container<'id, Array>,
     ) -> Option<Index<'id, I, NonEmpty>> {
         if *self < container.end() {
             unsafe { Some(Index::new_nonempty(self.untrusted())) }
@@ -231,7 +231,7 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
     }
 
     /// If the index is a valid absolute index within this range.
-    pub fn contains_in<Array: TrustedContainer>(
+    pub fn contains_in<Array: ?Sized + TrustedContainer>(
         &self,
         index: I,
         container: &Container<'id, Array>,
@@ -294,7 +294,7 @@ impl<'id, I: Idx> Range<'id, I, NonEmpty> {
     /// Increase the range's start, if the result is still a non-empty range.
     ///
     /// `true` if stepped successfully, `false` if the range would be empty.
-    pub fn advance_in<Array: TrustedContainer>(
+    pub fn advance_in<Array: ?Sized + TrustedContainer>(
         &mut self,
         container: &Container<'id, Array>,
     ) -> bool {

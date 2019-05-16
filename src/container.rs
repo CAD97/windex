@@ -19,13 +19,19 @@ use {
 /// dereferenceable index or range. Indexing like this uses _no_ runtime
 /// checking at all, as it is statically guaranteed correct.
 #[repr(transparent)]
-pub struct Container<'id, Array: TrustedContainer + ?Sized> {
+pub struct Container<'id, Array: ?Sized>
+where
+    Array: TrustedContainer,
+{
     #[allow(unused)]
     id: Id<'id>,
     array: Array,
 }
 
-impl<'id, Array: TrustedContainer> Container<'id, Array> {
+impl<'id, Array> Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
     pub(crate) unsafe fn new(array: Array) -> Self {
         Container {
             id: Id::default(),
@@ -34,7 +40,10 @@ impl<'id, Array: TrustedContainer> Container<'id, Array> {
     }
 }
 
-impl<'id, Array: TrustedContainer + ?Sized> Container<'id, Array> {
+impl<'id, Array: ?Sized> Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
     /// This container without the branding.
     ///
     /// # Note
@@ -206,8 +215,10 @@ where
     }
 }
 
-impl<'id, Array: TrustedContainer + ?Sized, I: Idx> ops::Index<Index<'id, I, NonEmpty>>
-    for Container<'id, Array>
+impl<'id, Array: ?Sized, I> ops::Index<Index<'id, I, NonEmpty>> for Container<'id, Array>
+where
+    Array: TrustedContainer,
+    I: Idx,
 {
     type Output = Array::Item;
 
@@ -216,8 +227,10 @@ impl<'id, Array: TrustedContainer + ?Sized, I: Idx> ops::Index<Index<'id, I, Non
     }
 }
 
-impl<'id, Array: TrustedContainer + ?Sized, I: Idx, P> ops::Index<Range<'id, I, P>>
-    for Container<'id, Array>
+impl<'id, Array: ?Sized, I, P> ops::Index<Range<'id, I, P>> for Container<'id, Array>
+where
+    Array: TrustedContainer,
+    I: Idx,
 {
     type Output = Array::Slice;
 
@@ -229,8 +242,11 @@ impl<'id, Array: TrustedContainer + ?Sized, I: Idx, P> ops::Index<Range<'id, I, 
     }
 }
 
-impl<'id, Array: TrustedContainer + ?Sized, I: Idx, P> ops::Index<ops::RangeFrom<Index<'id, I, P>>>
+impl<'id, Array: ?Sized, I, P> ops::Index<ops::RangeFrom<Index<'id, I, P>>>
     for Container<'id, Array>
+where
+    Array: TrustedContainer,
+    I: Idx,
 {
     type Output = Array::Slice;
 
@@ -239,8 +255,10 @@ impl<'id, Array: TrustedContainer + ?Sized, I: Idx, P> ops::Index<ops::RangeFrom
     }
 }
 
-impl<'id, Array: TrustedContainer + ?Sized, I: Idx, P> ops::Index<ops::RangeTo<Index<'id, I, P>>>
-    for Container<'id, Array>
+impl<'id, Array: ?Sized, I, P> ops::Index<ops::RangeTo<Index<'id, I, P>>> for Container<'id, Array>
+where
+    Array: TrustedContainer,
+    I: Idx,
 {
     type Output = Array::Slice;
 
@@ -249,7 +267,10 @@ impl<'id, Array: TrustedContainer + ?Sized, I: Idx, P> ops::Index<ops::RangeTo<I
     }
 }
 
-impl<'id, Array: TrustedContainer + ?Sized> ops::Index<ops::RangeFull> for Container<'id, Array> {
+impl<'id, Array: ?Sized> ops::Index<ops::RangeFull> for Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
     type Output = Array::Slice;
 
     fn index(&self, _: ops::RangeFull) -> &Self::Output {
@@ -257,15 +278,21 @@ impl<'id, Array: TrustedContainer + ?Sized> ops::Index<ops::RangeFull> for Conta
     }
 }
 
-impl<'id, Array: TrustedContainer + Copy> Copy for Container<'id, Array> {}
+impl<'id, Array: Copy> Copy for Container<'id, Array> where Array: TrustedContainer {}
 
-impl<'id, Array: TrustedContainer + Clone> Clone for Container<'id, Array> {
+impl<'id, Array: Clone> Clone for Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
     fn clone(&self) -> Self {
         unsafe { Container::new(self.array.clone()) }
     }
 }
 
-impl<'id, Array: TrustedContainer + fmt::Debug + ?Sized> fmt::Debug for Container<'id, Array> {
+impl<'id, Array: ?Sized + fmt::Debug> fmt::Debug for Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("Container<'id>").field(&&self.array).finish()
     }

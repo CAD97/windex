@@ -4,9 +4,9 @@ use indexing::{
     Container, Range,
 };
 
-fn indices<Array, F, Out, T>(arr: Array, f: F) -> Out
+fn indices<Array: ?Sized, F, Out, T>(arr: &Array, f: F) -> Out
 where
-    F: for<'id> FnOnce(Container<'id, Array>, Range<'id>) -> Out,
+    F: for<'id> FnOnce(&Container<'id, Array>, Range<'id>) -> Out,
     Array: TrustedContainer<Item = T>,
     T: TrustedItem<Array>,
 {

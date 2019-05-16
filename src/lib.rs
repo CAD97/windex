@@ -48,12 +48,12 @@
 extern crate std;
 
 mod container;
+mod r#impl;
 mod index;
 pub mod proof;
 pub mod traits;
-pub mod utf8;
 
-use crate::traits::TrustedContainer;
+use {crate::traits::TrustedContainer, debug_unreachable::debug_unreachable, std::ops};
 
 pub use crate::{
     container::Container,
@@ -99,4 +99,28 @@ where
     F: for<'id> FnOnce(&'id Container<'id, Array>) -> Out,
 {
     f(unsafe { &*(array as *const Array as *const Container<'_, Array>) })
+}
+
+/// A utf8 string slice of exactly one codepoint.
+///
+/// This type is two pointers large, so you'll probably want to read the
+/// underlying `char` out with [`Character::as_char`] as soon as possible.
+#[repr(transparent)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct Character(str);
+
+impl ops::Deref for Character {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Character {
+    pub fn as_char(&self) -> char {
+        self.chars()
+            .nth(0)
+            .unwrap_or_else(|| unsafe { debug_unreachable!() })
+    }
 }

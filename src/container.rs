@@ -76,10 +76,8 @@ impl<'id, Array: TrustedContainer + ?Sized> Container<'id, Array> {
 
     /// Vet an absolute index.
     pub fn vet<I: Idx>(&self, idx: I) -> Result<Index<'id, I, NonEmpty>, IndexError> {
-        // TrustedItem::vet doesn't assert that it's not at the end
-        let item = TrustedItem::vet(idx, self)?;
-        if item < self.end() {
-            unsafe { Ok(Index::new_nonempty(item.untrusted())) }
+        if idx < self.end().untrusted() {
+            unsafe { TrustedItem::vet_inbounds(idx, self).ok_or(IndexError::Invalid) }
         } else {
             Err(IndexError::OutOfBounds)
         }
@@ -103,9 +101,7 @@ impl<'id, Array: TrustedContainer + ?Sized> Container<'id, Array> {
         &self,
         idx: Index<'id, I, P>,
     ) -> (Range<'id, I, Unknown>, Range<'id, I, P>) {
-        (Range::from(self.start(), idx), unsafe {
-            Range::new_any(idx.untrusted(), self.end().untrusted())
-        })
+        (self.before(idx), self.after_inclusive(idx))
     }
 
     /// Split the container in two after the given index,
@@ -114,25 +110,18 @@ impl<'id, Array: TrustedContainer + ?Sized> Container<'id, Array> {
         &self,
         idx: Index<'id, I, NonEmpty>,
     ) -> (Range<'id, I, NonEmpty>, Range<'id, I, Unknown>) {
-        let mid = TrustedItem::after(idx, self);
-        (
-            unsafe { Range::new_nonempty(I::zero(), mid.untrusted()) },
-            Range::from(mid, self.end()),
-        )
+        (self.before_inclusive(idx), self.after(idx))
     }
 
     /// Split around the range `r` creating ranges `0..r.start` and `r.end..`.
     ///
-    /// The input `r` and return values `(s, t)` cover teh whole container in
+    /// The input `r` and return values `(s, t)` cover the whole container in
     /// the order `s`, `r`, `t`.
     pub fn split_around<I: Idx, P>(
         &self,
         r: Range<'id, I, P>,
     ) -> (Range<'id, I, Unknown>, Range<'id, I, Unknown>) {
-        (
-            Range::from(self.start(), r.start()),
-            Range::from(r.end(), self.end()),
-        )
+        (self.before(r.start()), self.after_inclusive(r.end()))
     }
 
     /// Return the range before but not including the index.
@@ -140,10 +129,24 @@ impl<'id, Array: TrustedContainer + ?Sized> Container<'id, Array> {
         Range::from(self.start(), idx)
     }
 
+    /// Return the range before the index, inclusive.
+    pub fn before_inclusive<I: Idx>(
+        &self,
+        idx: Index<'id, I, NonEmpty>,
+    ) -> Range<'id, I, NonEmpty> {
+        let after = TrustedItem::after(idx, self);
+        unsafe { Range::new_nonempty(self.start().untrusted(), after.untrusted()) }
+    }
+
     /// Return the range after but not including the index.
     pub fn after<I: Idx>(&self, idx: Index<'id, I, NonEmpty>) -> Range<'id, I, Unknown> {
         let after = TrustedItem::after(idx, self);
         Range::from(after, self.end())
+    }
+
+    /// Return the range after the index, inclusive.
+    pub fn after_inclusive<I: Idx, P>(&self, idx: Index<'id, I, P>) -> Range<'id, I, P> {
+        unsafe { Range::new_any(idx.untrusted(), self.end().untrusted()) }
     }
 
     /// Advance an index to the next item in the container, if there is one.
@@ -159,6 +162,11 @@ impl<'id, Array: TrustedContainer + ?Sized> Container<'id, Array> {
         offset: usize,
     ) -> Result<Index<'id, I, NonEmpty>, IndexError> {
         self.vet(idx.untrusted().add(offset))
+    }
+
+    /// Retreat an index to the prior item in the container, if there is one.
+    pub fn retreat<I: Idx, P>(&self, idx: Index<'id, I, P>) -> Option<Index<'id, I, NonEmpty>> {
+        TrustedItem::before(idx, self)
     }
 
     /// Decrease an index by a given base unit offset,
@@ -177,9 +185,9 @@ impl<'id, Array: TrustedContainer + ?Sized> Container<'id, Array> {
 }
 
 impl<'id, Array: ?Sized, D> ops::Deref for Container<'id, D>
-    where
-        Array: TrustedContainer,
-        D: TrustedContainer + ops::Deref<Target = Array>,
+where
+    Array: TrustedContainer,
+    D: TrustedContainer + ops::Deref<Target = Array>,
 {
     type Target = Container<'id, Array>;
 
@@ -189,9 +197,9 @@ impl<'id, Array: ?Sized, D> ops::Deref for Container<'id, D>
 }
 
 impl<'id, Array: ?Sized, D> ops::DerefMut for Container<'id, D>
-    where
-        Array: TrustedContainer,
-        D: TrustedContainer + ops::DerefMut<Target = Array>,
+where
+    Array: TrustedContainer,
+    D: TrustedContainer + ops::DerefMut<Target = Array>,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *(&mut *self.array as *mut Array as *mut Container<'id, Array>) }

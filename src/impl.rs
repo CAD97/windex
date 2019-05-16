@@ -58,6 +58,13 @@ where
         T::vet(idx, container)
     }
 
+    unsafe fn vet_inbounds<'id, I: Idx>(
+        idx: I,
+        container: &Container<'id, D>,
+    ) -> Option<Index<'id, I, NonEmpty>> {
+        T::vet_inbounds(idx, container)
+    }
+
     fn align<'id, I: Idx>(idx: I, container: &Container<'id, D>) -> Index<'id, I, Unknown> {
         T::align(idx, container)
     }
@@ -190,30 +197,19 @@ unsafe impl TrustedContainerMut for str {
 unsafe impl TrustedItem<str> for Character {
     type Unit = u8;
 
-    fn vet<'id, I: Idx>(
+    unsafe fn vet_inbounds<'id, I: Idx>(
         idx: I,
         container: &Container<'id, str>,
-    ) -> Result<Index<'id, I, Unknown>, IndexError> {
-        match idx.as_usize() {
-            i if i < container.unit_len() => {
-                let leading_byte = unsafe {
-                    *container
-                        .untrusted()
-                        .as_bytes()
-                        .get_unchecked(idx.as_usize())
-                };
-                if is_leading_byte(leading_byte) {
-                    debug_assert!(container.untrusted().is_char_boundary(idx.as_usize()));
-                    unsafe { Ok(Index::new(idx)) }
-                } else {
-                    Err(IndexError::Invalid)
-                }
-            }
-            i if i == container.unit_len() => {
-                debug_assert!(container.untrusted().is_char_boundary(idx.as_usize()));
-                unsafe { Ok(Index::new(idx)) }
-            }
-            _ => Err(IndexError::OutOfBounds),
+    ) -> Option<Index<'id, I, NonEmpty>> {
+        let leading_byte = *container
+            .untrusted()
+            .as_bytes()
+            .get_unchecked(idx.as_usize());
+        if is_leading_byte(leading_byte) {
+            debug_assert!(container.untrusted().is_char_boundary(idx.as_usize()));
+            Some(Index::new_nonempty(idx))
+        } else {
+            None
         }
     }
 

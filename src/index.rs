@@ -63,6 +63,29 @@ impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
     }
 }
 
+impl<'id, I: Idx, Emptiness> Index<'id, I, Emptiness> {
+    /// Try to create a proof that this index is nonempty.
+    pub fn nonempty_in<Array: TrustedContainer>(
+        &self,
+        container: Container<'id, Array>,
+    ) -> Option<Index<'id, I, NonEmpty>> {
+        if *self < container.end() {
+            unsafe { Some(Index::new_nonempty(self.untrusted())) }
+        } else {
+            None
+        }
+    }
+
+    /// Try to create a proof that this index is within a range.
+    pub fn in_range<Q>(&self, range: Range<'id, I, Q>) -> Option<Index<'id, I, NonEmpty>> {
+        if *self >= range.start() && *self < range.end() {
+            unsafe { Some(Index::new_nonempty(self.untrusted())) }
+        } else {
+            None
+        }
+    }
+}
+
 impl<'id, I: Idx> Index<'id, I, NonEmpty> {
     #[doc(hidden)]
     pub fn observe_proof(&self) {}
@@ -192,15 +215,16 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
         self.end
     }
 
-    /// Split around the middle `index` if it is in this range.
-    pub fn split_at<E>(&self, index: Index<'id, I, E>) -> Option<(Range<'id, I>, Range<'id, I>)> {
+    /// Split around the middle `index` if it is in this range,
+    /// such that the second range contains the index.
+    pub fn split_at<P>(
+        &self,
+        index: Index<'id, I, P>,
+    ) -> Option<(Range<'id, I, Unknown>, Range<'id, I, P>)> {
         if index >= self.start && index <= self.end {
-            unsafe {
-                Some((
-                    Range::new(self.start.idx, index.idx),
-                    Range::new(index.idx, self.end.idx),
-                ))
-            }
+            Some((Range::from(self.start(), index), unsafe {
+                Range::new_any(index.idx, self.end.idx)
+            }))
         } else {
             None
         }
@@ -213,6 +237,7 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
         container: &Container<'id, Array>,
     ) -> Option<Index<'id, I, NonEmpty>> {
         if index >= self.start().untrusted() && index < self.end().untrusted() {
+            // we need a full vet to check that we're on an item index
             container.vet(index).ok()
         } else {
             None
@@ -221,11 +246,7 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
 
     /// If the index is within this range. Provides a nonempty proof.
     pub fn contains<P>(&self, index: Index<'id, I, P>) -> Option<Index<'id, I, NonEmpty>> {
-        if index >= self.start() && index < self.end() {
-            unsafe { Some(Index::new_nonempty(index.untrusted())) }
-        } else {
-            None
-        }
+        index.in_range(*self)
     }
 
     /// Join together two adjacent ranges.

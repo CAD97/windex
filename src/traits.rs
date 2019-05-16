@@ -3,7 +3,7 @@ use {
         proof::{NonEmpty, Unknown},
         Container, Index, IndexError,
     },
-    core::{cmp, convert::TryFrom, fmt, hash::Hash, ops},
+    core::{cmp, convert::TryFrom, fmt, hash::Hash, num::NonZeroUsize, ops},
 };
 
 /// Unsigned integers able to be used as a trusted index.
@@ -17,6 +17,7 @@ where
     fn zero() -> Self;
     fn add(self, increment: usize) -> Self;
     fn sub(self, decrement: usize) -> Self;
+    fn div(self, denominator: NonZeroUsize) -> Self;
 }
 
 #[allow(non_snake_case)]
@@ -32,6 +33,10 @@ macro_rules! impl_Idx {
             }
             fn sub(self, decrement: usize) -> Self {
                 self - Self::from_usize(decrement).expect("increment")
+            }
+            fn div(self, denominator: NonZeroUsize) -> Self {
+                let denom = Self::from_usize(denominator.get()).expect("div");
+                self.checked_div(denom).expect("div")
             }
         })*
     };
@@ -78,12 +83,34 @@ where
 
     /// Vet an untrusted index for being on item boundaries.
     ///
-    /// The index for one-past-the-end of the container is a valid index. This
-    /// method conveys no emptiness proof (use [`Container::vet`] for that).
+    /// The index for one-past-the-end of the container is a valid index.
+    /// This method conveys no emptiness proof (use
+    /// [`vet_inbounds`][`TrustedItem::vet_inbounds`] for that).
     fn vet<'id, I: Idx>(
         idx: I,
         container: &Container<'id, Array>,
-    ) -> Result<Index<'id, I, Unknown>, IndexError>;
+    ) -> Result<Index<'id, I, Unknown>, IndexError> {
+        let len = container.end().untrusted();
+        match idx.as_usize() {
+            i if i == len => unsafe { Ok(Index::new(idx)) },
+            i if i < len => unsafe {
+                Self::vet_inbounds(idx, container)
+                    .as_ref()
+                    .map(Index::erased)
+                    .ok_or(IndexError::Invalid)
+            },
+            _ => Err(IndexError::OutOfBounds),
+        }
+    }
+
+    /// Vet an untrusted index for being on item boundaries.
+    ///
+    /// This assumes a proof that the raw index is inbounds. If you
+    /// don't have a proof, use [`vet`][`TrustedItem::vet`] instead.
+    unsafe fn vet_inbounds<'id, I: Idx>(
+        idx: I,
+        container: &Container<'id, Array>,
+    ) -> Option<Index<'id, I, NonEmpty>>;
 
     /// The largest trusted index less than or equal to this untrusted index.
     fn align<'id, I: Idx>(idx: I, container: &Container<'id, Array>) -> Index<'id, I, Unknown>;
@@ -133,8 +160,9 @@ where
 {
     /// Vet an untrusted index for being on item boundaries.
     ///
-    /// The index for one-past-the-end of the container is a valid index. This
-    /// method conveys no emptiness proof (use [`Container::vet`] for that).
+    /// The index for one-past-the-end of the container is a valid index.
+    /// This method conveys no emptiness proof (use
+    /// [`vet_inbounds`][`TrustedUnit::vet_inbounds`] for that).
     fn unit_vet<'id, I: Idx>(
         idx: I,
         container: &Container<'id, Array>,
@@ -144,6 +172,17 @@ where
         } else {
             Err(IndexError::OutOfBounds)
         }
+    }
+
+    /// Vet an untrusted index for being on item boundaries.
+    ///
+    /// This assumes a proof that the raw index is inbounds. If you
+    /// don't have a proof, use [`vet`][`TrustedUnit::vet`] instead.
+    unsafe fn unit_vet_inbounds<'id, I: Idx>(
+        idx: I,
+        _: &Container<'id, Array>,
+    ) -> Option<Index<'id, I, NonEmpty>> {
+        Some(Index::new_nonempty(idx))
     }
 
     /// The largest trusted index less than or equal to this untrusted index.
@@ -194,6 +233,13 @@ macro_rules! __trusted_item_forwarding {
                 container: &Container<'id, $Array>,
             ) -> Result<Index<'id, I, Unknown>, IndexError> {
                 <$T>::unit_vet(idx, container)
+            }
+
+            unsafe fn vet_inbounds<'id, I: Idx>(
+                idx: I,
+                container: &Container<'id, $Array>,
+            ) -> Option<Index<'id, I, NonEmpty>> {
+                <$T>::unit_vet_inbounds(idx, container)
             }
 
             fn align<'id, I: Idx>(idx: I, container: &Container<'id, $Array>) -> Index<'id, I, Unknown> {

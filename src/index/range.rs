@@ -27,6 +27,8 @@ pub struct Range<'id, I: Idx = u32, Emptiness = Unknown> {
     phantom: PhantomData<Emptiness>,
 }
 
+// ~~~ Private Helpers ~~~ //
+
 impl<'id, I: Idx> Range<'id, I, Unknown> {
     pub(crate) unsafe fn new(start: I, end: I) -> Self {
         Range::new_any(start, end)
@@ -47,7 +49,13 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
             phantom: PhantomData,
         }
     }
+
+    pub(crate) unsafe fn trusted(&self) -> Range<'id, I, NonEmpty> {
+        Range::new_nonempty(self.start.untrusted(), self.end.untrusted())
+    }
 }
+
+// ~~~ Public Constructors ~~~ //
 
 impl<'id, I: Idx> Range<'id, I, Unknown> {
     /// Construct a range from two trusted indices.
@@ -55,6 +63,8 @@ impl<'id, I: Idx> Range<'id, I, Unknown> {
         unsafe { Range::new(start.untrusted(), end.untrusted()) }
     }
 }
+
+// ~~~ Discarding Proofs ~~~ //
 
 impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
     /// This range without the branding.
@@ -66,7 +76,13 @@ impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
     pub fn erased(&self) -> Range<'id, I, Unknown> {
         Range::from(self.start(), self.end())
     }
+}
 
+// ~~~ Gaining Proofs ~~~ //
+
+// ~~~ Accessors ~~~ //
+
+impl<'id, I: Idx, Emptiness> Range<'id, I, Emptiness> {
     /// The length of the range.
     pub fn len(&self) -> I {
         if self.is_empty() {
@@ -205,6 +221,8 @@ impl<'id, I: Idx, Emptiness> From<ops::Range<Index<'id, I, Emptiness>>> for Rang
         Range::from(r.start, r.end)
     }
 }
+
+// ~~~ Derive traits but without unneeded bounds ~~~ //
 
 impl<'id, I: Idx, Emptiness> fmt::Debug for Range<'id, I, Emptiness> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

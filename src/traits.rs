@@ -39,10 +39,6 @@ where
     type Unit;
 
     /// Vet an untrusted index for being on item boundaries.
-    ///
-    /// The index for one-past-the-end of the container is a valid index.
-    /// This method conveys no emptiness proof (use
-    /// [`vet_inbounds`][`TrustedItem::vet_inbounds`] for that).
     fn vet<'id>(
         idx: u32,
         container: &Container<'id, Array>,
@@ -69,7 +65,23 @@ where
     ) -> Option<Index<'id, NonEmpty>>;
 
     /// The largest trusted index less than or equal to this untrusted index.
-    fn align<'id>(idx: u32, container: &Container<'id, Array>) -> Index<'id, Unknown>;
+    fn align<'id>(idx: u32, container: &Container<'id, Array>) -> Index<'id, Unknown> {
+        let len = container.end().untrusted();
+        if idx >= len {
+            unsafe { Index::new(len) }
+        } else {
+            unsafe { Self::align_inbounds(idx, container).erased() }
+        }
+    }
+
+    /// The largest trusted index less than or equal to this untrusted index.
+    ///
+    /// This assumes a proof that the raw index is inbounds. If you
+    /// don't have a proof, use [`align`][`TrustedItem::align`] instead.
+    unsafe fn align_inbounds<'id>(
+        idx: u32,
+        container: &Container<'id, Array>,
+    ) -> Index<'id, NonEmpty>;
 
     /// Increment an index to the next item, potentially resulting in an index
     /// that is one-past-the-end of the container.
@@ -115,10 +127,6 @@ where
     Array: TrustedContainer<Item = Self, Slice = [Self]>,
 {
     /// Vet an untrusted index for being on item boundaries.
-    ///
-    /// The index for one-past-the-end of the container is a valid index.
-    /// This method conveys no emptiness proof (use
-    /// [`vet_inbounds`][`TrustedUnit::vet_inbounds`] for that).
     fn unit_vet<'id>(
         idx: u32,
         container: &Container<'id, Array>,
@@ -144,6 +152,15 @@ where
     /// The largest trusted index less than or equal to this untrusted index.
     fn unit_align<'id>(idx: u32, container: &Container<'id, Array>) -> Index<'id, Unknown> {
         unsafe { Index::new(cmp::min(idx, container.end().untrusted())) }
+    }
+
+    /// The largest trusted index less than or equal to this untrusted index.
+    ///
+    /// This assumes a proof that the raw index is inbounds. If you
+    /// don't have a proof, use [`align`][`TrustedItem::align`] instead.
+    #[allow(clippy::needless_lifetimes)]
+    unsafe fn unit_align_inbounds<'id>(idx: u32) -> Index<'id, NonEmpty> {
+        Index::new(idx).trusted()
     }
 
     /// Increment an index to the next item, potentially resulting in an index
@@ -197,6 +214,10 @@ macro_rules! __trusted_item_forwarding {
 
             fn align<'id>(idx: u32, container: &Container<'id, $Array>) -> Index<'id, Unknown> {
                 <$T>::unit_align(idx, container)
+            }
+
+            unsafe fn align_inbounds<'id>(idx: u32, _: &Container<'id, $Array>) -> Index<'id, NonEmpty> {
+                <$T>::unit_align_inbounds(idx)
             }
 
             fn after<'id>(

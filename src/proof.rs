@@ -26,6 +26,21 @@ pub enum NonEmpty {}
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum Unknown {}
 
+/// Proof that the container of the same brand is a simple container. i.e.,
+/// ranges can do index manipulation without checking the backing container.
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct UnitProof<'id> {
+    id: Id<'id>,
+}
+
+impl<'id> UnitProof<'id> {
+    /// I promise that this proof will only be used to trust indices that fall
+    /// on an item boundary (e.g. character borders or anywhere in a slice).
+    pub unsafe fn promise() -> UnitProof<'id> {
+        UnitProof { id: Id::default() }
+    }
+}
+
 /// Represents the combination of two proofs `P` and `Q` by a new type `Sum`.
 pub trait ProofAdd {
     type Sum;

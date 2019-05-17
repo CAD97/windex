@@ -1,5 +1,5 @@
 #[cfg(feature = "doc")]
-use crate::{scope, scope_ref};
+use crate::{scope, scope_val};
 use {
     crate::{
         proof::{Id, NonEmpty, Unknown},
@@ -49,9 +49,9 @@ where
     /// # Note
     ///
     /// The returned lifetime of `&Array` is _not_ `'id`! It's completely
-    /// valid to drop the container during the [`scope`], in which case this
+    /// valid to drop the container during a [`scope_val`], in which case this
     /// reference would become invalid. If you need a longer lifetime,
-    /// consider using [`scope_ref`] such that the reference is guaranteed to
+    /// consider using [`scope`] such that the reference is guaranteed to
     /// live for the entire scope.
     pub fn untrusted(&self) -> &Array {
         &self.array
@@ -74,12 +74,12 @@ where
 
     /// The empty range `0..0`.
     pub fn empty_range(&self) -> Range<'id, Unknown> {
-        Range::from(self.start(), self.start())
+        unsafe { Range::from(self.start(), self.start()) }
     }
 
     /// The full range of the container.
     pub fn range(&self) -> Range<'id, Unknown> {
-        Range::from(self.start(), self.end())
+        unsafe { Range::from(self.start(), self.end()) }
     }
 
     /// Vet an absolute index.
@@ -94,10 +94,7 @@ where
     /// Vet an absolute range.
     // Future: Error type `EitherOrBoth<IndexError, IndexError>`?
     pub fn vet_range(&self, r: ops::Range<u32>) -> Result<Range<'id, Unknown>, IndexError> {
-        Ok(Range::from(
-            TrustedItem::vet(r.start, self)?,
-            TrustedItem::vet(r.end, self)?,
-        ))
+        Ok((TrustedItem::vet(r.start, self)?..TrustedItem::vet(r.end, self)?).into())
     }
 
     /// Split the container in two at the given index,
@@ -125,7 +122,7 @@ where
 
     /// Return the range before but not including the index.
     pub fn before<P>(&self, idx: Index<'id, P>) -> Range<'id, Unknown> {
-        Range::from(self.start(), idx)
+        unsafe { Range::from(self.start(), idx) }
     }
 
     /// Return the range before the index, inclusive.
@@ -137,7 +134,7 @@ where
     /// Return the range after but not including the index.
     pub fn after(&self, idx: Index<'id, NonEmpty>) -> Range<'id, Unknown> {
         let after = TrustedItem::after(idx, self);
-        Range::from(after, self.end())
+        unsafe { Range::from(after, self.end()) }
     }
 
     /// Return the range after the index, inclusive.
@@ -179,6 +176,8 @@ where
         }
     }
 }
+
+// ~~~ Access traits ~~~ //
 
 impl<'id, Array: ?Sized, D> ops::Deref for Container<'id, D>
 where
@@ -260,6 +259,17 @@ where
     }
 }
 
+// ~~~ Derive traits but without unneeded bounds ~~~ //
+
+impl<'id, Array: ?Sized + fmt::Debug> fmt::Debug for Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Container<'id>").field(&&self.array).finish()
+    }
+}
+
 impl<'id, Array: Copy> Copy for Container<'id, Array> where Array: TrustedContainer {}
 
 impl<'id, Array: Clone> Clone for Container<'id, Array>
@@ -268,14 +278,5 @@ where
 {
     fn clone(&self) -> Self {
         unsafe { Container::new(self.array.clone()) }
-    }
-}
-
-impl<'id, Array: ?Sized + fmt::Debug> fmt::Debug for Container<'id, Array>
-where
-    Array: TrustedContainer,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Container<'id>").field(&&self.array).finish()
     }
 }

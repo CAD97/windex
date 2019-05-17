@@ -69,6 +69,10 @@ where
         T::align(idx, container)
     }
 
+    unsafe fn align_inbounds<'id>(idx: u32, container: &Container<'id, D>) -> Index<'id, NonEmpty> {
+        T::align_inbounds(idx, container)
+    }
+
     fn after<'id>(
         this: Index<'id, NonEmpty>,
         container: &Container<'id, D>,
@@ -210,30 +214,27 @@ unsafe impl TrustedItem<str> for Character {
         }
     }
 
-    fn align<'id>(idx: u32, container: &Container<'id, str>) -> Index<'id, Unknown> {
+    unsafe fn align_inbounds<'id>(
+        idx: u32,
+        container: &Container<'id, str>,
+    ) -> Index<'id, NonEmpty> {
         let mut i = idx;
-
-        if idx >= container.unit_len() {
-            return container.end();
-        }
 
         // Hopefully LLVM will vectorize or at least unroll this
         // The maximum UTF8 length is 4 bytes, so only check four
         for _ in 0..3 {
-            unsafe {
-                let byte = *container.untrusted().as_bytes().get_unchecked(i as usize);
+            let byte = *container.untrusted().as_bytes().get_unchecked(i as usize);
 
-                if is_leading_byte(byte) {
-                    debug_assert!(container.untrusted().is_char_boundary(i as usize));
-                    return Index::new(i);
-                }
-
-                // This cannot underflow as the first byte of a string is a leading byte
-                i -= 1;
+            if is_leading_byte(byte) {
+                debug_assert!(container.untrusted().is_char_boundary(i as usize));
+                return Index::new(i).trusted();
             }
+
+            // This cannot underflow as the first byte of a string is a leading byte
+            i -= 1;
         }
 
-        unsafe { debug_unreachable!() }
+        debug_unreachable!()
     }
 
     fn after<'id>(

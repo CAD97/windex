@@ -1,11 +1,7 @@
 #[cfg(feature = "doc")]
 use crate::scope;
 use {
-    crate::{
-        proof::{Id, NonEmpty, Unknown},
-        traits::TrustedContainer,
-        Container, Range,
-    },
+    crate::proof::{Id, NonEmpty, Unknown},
     core::{
         cmp, fmt,
         hash::{self, Hash},
@@ -55,48 +51,27 @@ impl<'id, Emptiness> Index<'id, Emptiness> {
             phantom: PhantomData,
         }
     }
+}
 
+// ~~~ Manipulating Proofs ~~~ //
+
+impl<'id, Emptiness> Index<'id, Emptiness> {
     pub(crate) unsafe fn trusted(self) -> Index<'id, NonEmpty> {
         Index::new_nonempty(self.untrusted())
     }
-}
 
-// ~~~ Discarding Proofs ~~~ //
-
-impl<'id, Emptiness> Index<'id, Emptiness> {
-    /// This index without the branding.
-    pub fn untrusted(self) -> u32 {
-        self.idx
+    pub(crate) unsafe fn any<P>(self) -> Index<'id, P> {
+        Index::new_any(self.untrusted())
     }
 
     /// This index without the emptiness proof.
     pub fn erased(self) -> Index<'id, Unknown> {
         unsafe { Index::new(self.idx) }
     }
-}
 
-// ~~~ Gaining Proofs ~~~ //
-
-impl<'id, Emptiness> Index<'id, Emptiness> {
-    /// Try to create a proof that this index is nonempty.
-    pub fn nonempty_in<Array: ?Sized + TrustedContainer>(
-        self,
-        container: &Container<'id, Array>,
-    ) -> Option<Index<'id, NonEmpty>> {
-        if self < container.end() {
-            unsafe { Some(self.trusted()) }
-        } else {
-            None
-        }
-    }
-
-    /// Try to create a proof that this index is within a range.
-    pub fn in_range<Q>(self, range: Range<'id, Q>) -> Option<Index<'id, NonEmpty>> {
-        if self >= range.start() && self < range.end() {
-            unsafe { Some(self.trusted()) }
-        } else {
-            None
-        }
+    /// This index without the branding.
+    pub fn untrusted(self) -> u32 {
+        self.idx
     }
 }
 

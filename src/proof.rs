@@ -4,7 +4,7 @@ use core::{fmt, marker::PhantomData};
 ///
 /// This means that the inference engine is not allowed to
 /// grow or shrink `'id` to unify with any other lifetime.
-#[derive(Copy, Clone, Default, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Default)]
 pub(crate) struct Id<'id> {
     id: PhantomData<&'id mut &'id ()>,
 }

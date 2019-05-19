@@ -28,14 +28,17 @@
 #![deny(rust_2018_idioms, unconditional_recursion)]
 #![cfg_attr(feature = "doc", feature(doc_cfg))]
 
-mod container;
 mod r#impl;
+
+pub mod container;
+pub mod particle;
 pub mod proof;
 pub mod traits;
 
 use {crate::traits::TrustedContainer, core::ops, debug_unreachable::debug_unreachable};
 
 pub use crate::container::Container;
+use crate::traits::TrustedContainerMut;
 
 /// Create an indexing scope for a borrowed container.
 ///
@@ -63,9 +66,11 @@ where
 /// Indices and ranges branded with `'id` cannot leave the closure. The
 /// container can only be trusted when accessed through the `Container`
 /// wrapper passed as the first argument to the indexing scope.
+// FUTURE: Does this need the `Array: TrustedContainerMut` bound?
+//         For now, it's there as an overly cautious measure.
 pub fn scope_mut<Array: ?Sized, F, Out>(array: &mut Array, f: F) -> Out
 where
-    Array: TrustedContainer,
+    Array: TrustedContainerMut,
     F: for<'id> FnOnce(&'id Container<'id, Array>) -> Out,
 {
     f(unsafe { &mut *(array as *mut Array as *mut Container<'_, Array>) })

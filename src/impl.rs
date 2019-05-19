@@ -1,5 +1,5 @@
 use {
-    crate::{proof::*, traits::*, *},
+    crate::{particle::*, proof::*, traits::*, *},
     core::{convert::TryFrom, ops},
 };
 
@@ -33,11 +33,11 @@ where
     D::Target: TrustedContainerMut,
     D: ops::DerefMut + ops::Deref,
 {
-    unsafe fn get_unchecked_mut(&mut self, i: u32) -> &Self::Item {
+    unsafe fn get_unchecked_mut(&mut self, i: u32) -> &mut Self::Item {
         <D::Target>::get_unchecked_mut(self, i)
     }
 
-    unsafe fn slice_unchecked_mut(&mut self, r: ops::Range<u32>) -> &Self::Slice {
+    unsafe fn slice_unchecked_mut(&mut self, r: ops::Range<u32>) -> &mut Self::Slice {
         <D::Target>::slice_unchecked_mut(self, r)
     }
 }
@@ -85,12 +85,12 @@ unsafe impl<T> TrustedContainer for [T] {
 }
 
 unsafe impl<T> TrustedContainerMut for [T] {
-    unsafe fn get_unchecked_mut(&mut self, i: u32) -> &T {
+    unsafe fn get_unchecked_mut(&mut self, i: u32) -> &mut T {
         debug_assert!(i < self.len());
         self.get_unchecked_mut(usize::try_from(i).unwrap())
     }
 
-    unsafe fn slice_unchecked_mut(&mut self, r: ops::Range<u32>) -> &[T] {
+    unsafe fn slice_unchecked_mut(&mut self, r: ops::Range<u32>) -> &mut [T] {
         debug_assert!(r.start <= self.len());
         debug_assert!(r.end <= self.len());
         debug_assert!(r.start <= r.end);
@@ -146,7 +146,7 @@ unsafe impl TrustedContainer for str {
 }
 
 unsafe impl TrustedContainerMut for str {
-    unsafe fn get_unchecked_mut(&mut self, i: u32) -> &Character {
+    unsafe fn get_unchecked_mut(&mut self, i: u32) -> &mut Character {
         debug_assert!(i < self.len());
         let i = usize::try_from(i).unwrap();
         debug_assert!(self.is_char_boundary(i));
@@ -161,7 +161,7 @@ unsafe impl TrustedContainerMut for str {
         &mut *(code_point as *mut str as *mut Character)
     }
 
-    unsafe fn slice_unchecked_mut(&mut self, r: ops::Range<u32>) -> &Self::Slice {
+    unsafe fn slice_unchecked_mut(&mut self, r: ops::Range<u32>) -> &mut Self::Slice {
         let r = usize::try_from(r.start).unwrap()..usize::try_from(r.end).unwrap();
         debug_assert!(self.is_char_boundary(r.start));
         debug_assert!(self.is_char_boundary(r.end));

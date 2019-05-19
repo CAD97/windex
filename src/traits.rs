@@ -1,4 +1,4 @@
-use { core::ops};
+use core::ops;
 
 /// Types that can back a trusted container: it can have indices and ranges
 /// that are trusted to be in bounds. See also [`TrustedItem`], [`TrustedUnit`].
@@ -17,8 +17,8 @@ pub unsafe trait TrustedContainer {
 }
 
 pub unsafe trait TrustedContainerMut: TrustedContainer {
-    unsafe fn get_unchecked_mut(&mut self, i: u32) -> &Self::Item;
-    unsafe fn slice_unchecked_mut(&mut self, r: ops::Range<u32>) -> &Self::Slice;
+    unsafe fn get_unchecked_mut(&mut self, i: u32) -> &mut Self::Item;
+    unsafe fn slice_unchecked_mut(&mut self, r: ops::Range<u32>) -> &mut Self::Slice;
 }
 
 /// An item within a [`TrustedContainer`].

@@ -40,6 +40,17 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
     }
 }
 
+/// Intrinsic properties
+impl<'id, Emptiness> Range<'id, Emptiness> {
+    pub fn start(self) -> Index<'id, Emptiness> {
+        unsafe { Index::new(self.start.untrusted()) }
+    }
+
+    pub fn end(self) -> Index<'id, Unknown> {
+        self.end
+    }
+}
+
 // ~~~ Standard traits ~~~ //
 
 impl<'id, Emptiness> From<perfect::Range<'id, Emptiness>> for Range<'id, Emptiness> {

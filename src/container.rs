@@ -95,6 +95,16 @@ where
     }
 }
 
+/// Upgrading particles
+impl<'id, Array: ?Sized> Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
+    pub fn vet<V: Vettable<'id>>(&self, particle: V) -> Result<V::Vetted, IndexError> {
+        particle.vet(self)
+    }
+}
+
 // ~~~ Accessors ~~~ //
 
 impl<'id, Array: ?Sized> ops::Index<ops::RangeFull> for Container<'id, Array>

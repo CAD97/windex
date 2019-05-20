@@ -1,8 +1,5 @@
 use {
-    crate::{
-        particle::{perfect::Range, simple},
-        proof::*,
-    },
+    crate::{particle::simple, proof::*},
     core::{
         cmp,
         fmt::{self, Debug},

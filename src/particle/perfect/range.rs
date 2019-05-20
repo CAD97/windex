@@ -41,6 +41,17 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
     }
 }
 
+/// Intrinsic properties
+impl<'id, Emptiness> Range<'id, Emptiness> {
+    pub fn start(self) -> Index<'id, Emptiness> {
+        unsafe { Index::new(self.simple.start().untrusted()) }
+    }
+
+    pub fn end(self) -> Index<'id, Unknown> {
+        unsafe { Index::new(self.simple.end().untrusted()) }
+    }
+}
+
 // ~~~ Standard traits ~~~ //
 
 impl<'id, Emptiness> Copy for Range<'id, Emptiness> {}

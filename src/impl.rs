@@ -1,7 +1,26 @@
 use {
-    crate::{particle::*, proof::*, traits::*, *},
+    crate::{
+        particle::{perfect::*, IndexError},
+        proof::*,
+        traits::*,
+        *,
+    },
     core::{convert::TryFrom, ops},
+    debug_unreachable::debug_unreachable,
 };
+
+/// IMPORTANT safety note: `ix < self.len() as u32` is enough both when
+/// `usize <= u32` and `usize > u32`. If `usize <= u32`, this is lossless.
+/// If `usize > u32`, the worst that will happen is that the length checked
+/// will be modulo u32::MAX, in which case a) we're already broken because we
+/// assume u32 is enough, and b) this will only decrease inbounds length.
+unsafe fn to_usize<Array: ?Sized>(ix: u32, container: &Array) -> usize
+where
+    Array: TrustedContainer,
+{
+    debug_assert!(ix <= container.len());
+    usize::try_from(ix).unwrap_or_else(|_| debug_unreachable!())
+}
 
 // ~~~ References ~~~ //
 
@@ -49,6 +68,20 @@ where
     D: ops::Deref<Target = Array>,
 {
     type Unit = T::Unit;
+
+    fn vet<'id>(
+        idx: u32,
+        container: &Container<'id, D>,
+    ) -> Result<Index<'id, Unknown>, IndexError> {
+        T::vet(idx, container)
+    }
+
+    unsafe fn vet_inbounds<'id>(
+        ix: u32,
+        container: &Container<'id, D>,
+    ) -> Option<Index<'id, NonEmpty>> {
+        T::vet_inbounds(ix, container)
+    }
 }
 
 unsafe impl<T, Array, D> TrustedUnit<D> for T
@@ -66,64 +99,80 @@ unsafe impl<T> TrustedContainer for [T] {
     type Slice = [T];
 
     fn len(&self) -> u32 {
-        u32::try_from(self.len()).unwrap()
+        self.len() as u32
     }
 
-    unsafe fn get_unchecked(&self, i: u32) -> &T {
-        let i = usize::try_from(i).unwrap();
+    unsafe fn get_unchecked(&self, ix: u32) -> &T {
+        let i = to_usize(ix, self);
         debug_assert!(i < self.len());
         self.get_unchecked(i)
     }
 
     unsafe fn slice_unchecked(&self, r: ops::Range<u32>) -> &[T] {
-        let r = usize::try_from(r.start).unwrap()..usize::try_from(r.end).unwrap();
-        debug_assert!(r.start <= self.len());
-        debug_assert!(r.end <= self.len());
+        let r = to_usize(r.start, self)..to_usize(r.end, self);
         debug_assert!(r.start <= r.end);
         self.get_unchecked(r)
     }
 }
 
 unsafe impl<T> TrustedContainerMut for [T] {
-    unsafe fn get_unchecked_mut(&mut self, i: u32) -> &mut T {
-        debug_assert!(i < self.len());
-        self.get_unchecked_mut(usize::try_from(i).unwrap())
+    unsafe fn get_unchecked_mut(&mut self, ix: u32) -> &mut T {
+        debug_assert!(ix < self.len());
+        let i = to_usize(ix, self);
+        self.get_unchecked_mut(i)
     }
 
     unsafe fn slice_unchecked_mut(&mut self, r: ops::Range<u32>) -> &mut [T] {
-        debug_assert!(r.start <= self.len());
-        debug_assert!(r.end <= self.len());
+        let r = to_usize(r.start, self)..to_usize(r.end, self);
         debug_assert!(r.start <= r.end);
-        self.get_unchecked_mut(usize::try_from(r.start).unwrap()..usize::try_from(r.end).unwrap())
+        self.get_unchecked_mut(r)
     }
 }
 
 unsafe impl<T> TrustedUnit<[T]> for T {}
 unsafe impl<T> TrustedItem<[T]> for T {
     type Unit = T;
+
+    fn vet<'id>(
+        ix: u32,
+        container: &Container<'id, [T]>,
+    ) -> Result<Index<'id, Unknown>, IndexError> {
+        if ix <= container.len() {
+            Ok(unsafe { Index::new(ix) })
+        } else {
+            Err(IndexError::OutOfBounds)
+        }
+    }
+
+    unsafe fn vet_inbounds<'id>(
+        ix: u32,
+        container: &Container<'id, [T]>,
+    ) -> Option<Index<'id, NonEmpty>> {
+        debug_assert!(ix < container.len());
+        Some(Index::new(ix))
+    }
 }
 
 // ~~~ Strings ~~~ //
 
-//#[inline]
-//fn is_leading_byte(byte: u8) -> bool {
-//    // We want to accept 0b0xxx_xxxx or 0b11xx_xxxx
-//    // Copied from str::is_char_boundary
-//    // This is bit magic equivalent to: b < 128 || b >= 192
-//    (byte as i8) >= -0x40
-//}
+#[inline]
+fn is_leading_byte(byte: u8) -> bool {
+    // We want to accept 0b0xxx_xxxx or 0b11xx_xxxx
+    // Copied from str::is_char_boundary
+    // This is bit magic equivalent to: b < 128 || b >= 192
+    (byte as i8) >= -0x40
+}
 
 unsafe impl TrustedContainer for str {
     type Item = Character;
     type Slice = str;
 
     fn len(&self) -> u32 {
-        u32::try_from(self.len()).unwrap()
+        self.len() as u32
     }
 
-    unsafe fn get_unchecked(&self, i: u32) -> &Character {
-        let i = usize::try_from(i).unwrap();
-        debug_assert!(i < self.len());
+    unsafe fn get_unchecked(&self, ix: u32) -> &Character {
+        let i = to_usize(ix, self);
         debug_assert!(self.is_char_boundary(i));
         let slice = self.get_unchecked(i..);
         let byte_count = slice
@@ -137,7 +186,7 @@ unsafe impl TrustedContainer for str {
     }
 
     unsafe fn slice_unchecked(&self, r: ops::Range<u32>) -> &str {
-        let r = usize::try_from(r.start).unwrap()..usize::try_from(r.end).unwrap();
+        let r = to_usize(r.start, self)..to_usize(r.end, self);
         debug_assert!(self.is_char_boundary(r.start));
         debug_assert!(self.is_char_boundary(r.end));
         debug_assert!(r.start < r.end);
@@ -146,10 +195,8 @@ unsafe impl TrustedContainer for str {
 }
 
 unsafe impl TrustedContainerMut for str {
-    unsafe fn get_unchecked_mut(&mut self, i: u32) -> &mut Character {
-        debug_assert!(i < self.len());
-        let i = usize::try_from(i).unwrap();
-        debug_assert!(self.is_char_boundary(i));
+    unsafe fn get_unchecked_mut(&mut self, ix: u32) -> &mut Character {
+        let i = to_usize(ix, self);
         let slice = self.get_unchecked_mut(i..);
         let byte_count = slice
             .char_indices()
@@ -162,7 +209,7 @@ unsafe impl TrustedContainerMut for str {
     }
 
     unsafe fn slice_unchecked_mut(&mut self, r: ops::Range<u32>) -> &mut Self::Slice {
-        let r = usize::try_from(r.start).unwrap()..usize::try_from(r.end).unwrap();
+        let r = to_usize(r.start, self)..to_usize(r.end, self);
         debug_assert!(self.is_char_boundary(r.start));
         debug_assert!(self.is_char_boundary(r.end));
         debug_assert!(r.start < r.end);
@@ -172,4 +219,19 @@ unsafe impl TrustedContainerMut for str {
 
 unsafe impl TrustedItem<str> for Character {
     type Unit = u8;
+
+    unsafe fn vet_inbounds<'id>(
+        ix: u32,
+        container: &Container<'id, str>,
+    ) -> Option<Index<'id, NonEmpty>> {
+        let i = to_usize(ix, container.untrusted());
+        let leading_byte = *container.untrusted().as_bytes().get_unchecked(i);
+        if is_leading_byte(leading_byte) {
+            debug_assert!(container.untrusted().is_char_boundary(i));
+            Some(Index::new(ix))
+        } else {
+            debug_assert!(!container.untrusted().is_char_boundary(i));
+            None
+        }
+    }
 }

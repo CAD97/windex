@@ -1,4 +1,11 @@
-use core::ops;
+use crate::proof::{NonEmpty, Unknown};
+use {
+    crate::{
+        particle::{perfect::*, IndexError},
+        Container,
+    },
+    core::ops,
+};
 
 /// Types that can back a trusted container: it can have indices and ranges
 /// that are trusted to be in bounds. See also [`TrustedItem`], [`TrustedUnit`].
@@ -31,6 +38,35 @@ where
 {
     /// The base representational unit type.
     type Unit;
+
+    /// Vet an untrusted index for being on item boundaries.
+    ///
+    /// This does not require the index to be nonempty; thus,
+    /// the one-past-the-end index is valid for this vetting.
+    fn vet<'id>(
+        ix: u32,
+        container: &Container<'id, Array>,
+    ) -> Result<Index<'id, Unknown>, IndexError> {
+        let len = container.len();
+        match ix {
+            i if i == len => unsafe { Ok(Index::new(ix)) },
+            i if i < len => unsafe {
+                Self::vet_inbounds(ix, container)
+                    .map(Index::erased)
+                    .ok_or(IndexError::Invalid)
+            },
+            _ => Err(IndexError::OutOfBounds),
+        }
+    }
+
+    /// Vet an untrusted index for being on item boundaries.
+    ///
+    /// This assumes a proof that the raw index is inbounds. If you do not
+    /// have a proof, use [`vet`][`TrustedItem::vet`] instead, which checks.
+    unsafe fn vet_inbounds<'id>(
+        ix: u32,
+        container: &Container<'id, Array>,
+    ) -> Option<Index<'id, NonEmpty>>;
 }
 
 /// A [`TrustedItem`] where the item is the base unit. Thus, manipulating

@@ -164,4 +164,4 @@ macro_rules! vettable_int {
     )*};
 }
 
-vettable_int!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize,);
+vettable_int!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);

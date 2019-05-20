@@ -28,12 +28,22 @@ impl<'id, Emptiness> Index<'id, Emptiness> {
 
 /// Downgrade
 impl<'id, Emptiness> Index<'id, Emptiness> {
+    /// This index without the brand.
     pub fn untrusted(self) -> u32 {
         self.ix
     }
 
+    /// This index without the emptiness proof.
     pub fn erased(self) -> Index<'id, Unknown> {
         unsafe { Index::new(self.ix) }
+    }
+}
+
+/// Manipulation
+impl<'id> Index<'id, NonEmpty> {
+    /// The (simple) index directly after this one.
+    pub fn after(self) -> Index<'id, Unknown> {
+        unsafe { Index::new(self.ix + 1) }
     }
 }
 

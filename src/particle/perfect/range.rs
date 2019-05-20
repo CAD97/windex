@@ -28,14 +28,17 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
 
 /// Downgrade
 impl<'id, Emptiness> Range<'id, Emptiness> {
+    /// This range without the brand.
     pub fn untrusted(self) -> ops::Range<u32> {
         self.simple.untrusted()
     }
 
+    /// This range without the emptiness proof.
     pub fn erased(self) -> Range<'id, Unknown> {
         unsafe { Range::from(self.simple.erased()) }
     }
 
+    /// This range in simple manipulation mode.
     pub fn simple(self) -> simple::Range<'id, Emptiness> {
         self.simple
     }
@@ -43,10 +46,12 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
 
 /// Intrinsic properties
 impl<'id, Emptiness> Range<'id, Emptiness> {
+    /// The start index of this range.
     pub fn start(self) -> Index<'id, Emptiness> {
         unsafe { Index::new(self.simple.start().untrusted()) }
     }
 
+    /// The end index of this range.
     pub fn end(self) -> Index<'id, Unknown> {
         unsafe { Index::new(self.simple.end().untrusted()) }
     }

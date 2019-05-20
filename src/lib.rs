@@ -28,9 +28,9 @@
 #![deny(rust_2018_idioms, unconditional_recursion)]
 #![cfg_attr(feature = "doc", feature(doc_cfg))]
 
+mod container;
 mod r#impl;
 
-pub mod container;
 pub mod particle;
 pub mod proof;
 pub mod traits;

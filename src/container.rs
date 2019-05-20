@@ -1,8 +1,8 @@
 #[cfg(feature = "doc")]
-use crate::{scope, scope_val};
+use crate::{scope, scope_mut, scope_val};
 use {
     crate::{particle::*, proof::*, traits::*},
-    core::{fmt, ops},
+    core::{fmt, mem, ops},
 };
 
 /// A branded container, that allows access only to indices and ranges with
@@ -61,11 +61,11 @@ where
     /// The returned lifetime of `&Array` is _not_ `'id`! It's completely
     /// valid to drop the container during a [`scope_val`], in which case this
     /// reference would become invalid. If you need a longer lifetime,
-    /// consider using [`scope`] such that the reference is guaranteed to
+    /// consider using [`scope_mut`] such that the reference is guaranteed to
     /// live for the entire scope.
     // FUTURE: Does this need the `Array: TrustedContainerMut` bound?
     //         For now, it's there as an overly cautious measure.
-    pub fn untrusted_mut(&mut self) -> &Array
+    pub fn untrusted_mut(&mut self) -> &mut Array
     where
         Array: TrustedContainerMut,
     {
@@ -93,6 +93,34 @@ where
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    /// The full range of the container.
+    pub fn as_range(&self) -> perfect::Range<'id, Unknown> {
+        unsafe { perfect::Range::new(0, self.len()) }
+    }
+
+    /// The start index of the container.
+    pub fn start(&self) -> perfect::Index<'id, Unknown> {
+        unsafe { perfect::Index::new(0) }
+    }
+
+    /// The end index of the container. (This is the one-past-the-end index.)
+    pub fn end(&self) -> perfect::Index<'id, Unknown> {
+        unsafe { perfect::Index::new(self.len()) }
+    }
+
+    /// Take a internally trusted reference to the container.
+    pub fn as_ref(&self) -> Container<'id, &Array> {
+        unsafe { mem::transmute(&*self) }
+    }
+
+    /// Take an internally trusted mutable reference to the container.
+    pub fn as_ref_mut(&mut self) -> Container<'id, &mut Array>
+    where
+        Array: TrustedContainerMut,
+    {
+        unsafe { mem::transmute(&mut *self) }
+    }
 }
 
 /// Upgrading particles
@@ -100,8 +128,18 @@ impl<'id, Array: ?Sized> Container<'id, Array>
 where
     Array: TrustedContainer,
 {
+    /// Vet a particle for being inbounds and indexable to this container.
     pub fn vet<V: Vettable<'id>>(&self, particle: V) -> Result<V::Vetted, IndexError> {
         particle.vet(self)
+    }
+
+    /// Vet an index for being valid, including the one-past-the-end index.
+    pub fn vet_or_end(&self, particle: u32) -> Result<perfect::Index<'id, Unknown>, IndexError> {
+        Ok(if particle == self.len() {
+            self.end()
+        } else {
+            self.vet(particle)?.erased()
+        })
     }
 }
 

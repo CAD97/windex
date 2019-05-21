@@ -2,7 +2,7 @@
 use crate::{scope, scope_mut, scope_val};
 use {
     crate::{particle::*, proof::*, traits::*},
-    core::{fmt, mem, ops},
+    core::{convert::AsRef, fmt, mem, ops},
 };
 
 /// A branded container, that allows access only to indices and ranges with
@@ -42,27 +42,11 @@ where
     Array: TrustedContainer,
 {
     /// This container without the branding.
-    ///
-    /// # Note
-    ///
-    /// The returned lifetime of `&Array` is _not_ `'id`! It's completely
-    /// valid to drop the container during a [`scope_val`], in which case this
-    /// reference would become invalid. If you need a longer lifetime,
-    /// consider using [`scope`] such that the reference is guaranteed to
-    /// live for the entire scope.
     pub fn untrusted(&self) -> &Array {
         &self.array
     }
 
     /// This container without the branding.
-    ///
-    /// # Note
-    ///
-    /// The returned lifetime of `&Array` is _not_ `'id`! It's completely
-    /// valid to drop the container during a [`scope_val`], in which case this
-    /// reference would become invalid. If you need a longer lifetime,
-    /// consider using [`scope_mut`] such that the reference is guaranteed to
-    /// live for the entire scope.
     // FUTURE: Does this need the `Array: TrustedContainerMut` bound?
     //         For now, it's there as an overly cautious measure.
     pub fn untrusted_mut(&mut self) -> &mut Array
@@ -73,10 +57,6 @@ where
     }
 
     /// This container without the branding.
-    ///
-    /// # Note
-    ///
-    /// If you use this method to strip the brand, you cannot get it back!
     pub fn into_untrusted(self) -> Array
     where
         Array: Sized,
@@ -110,16 +90,40 @@ where
     }
 
     /// Take a internally trusted reference to the container.
-    pub fn as_ref(&self) -> Container<'id, &Array> {
+    pub fn as_ref(&self) -> Container<'id, &'_ Array> {
         unsafe { mem::transmute(&*self) }
     }
 
     /// Take an internally trusted mutable reference to the container.
-    pub fn as_ref_mut(&mut self) -> Container<'id, &mut Array>
+    pub fn as_ref_mut(&mut self) -> Container<'id, &'_ mut Array>
     where
         Array: TrustedContainerMut,
     {
         unsafe { mem::transmute(&mut *self) }
+    }
+
+    /// Convert this container into a simple container of the representational
+    /// unit slice. The lifetime of the returned container _must_ be tied to
+    /// the borrow here to enforce that the backing array is not mutated; if
+    /// you want `Container<'id, &'id str>` and `Container<'id, &'id [u8]>`,
+    /// use [`scope`] to get a `&'id Container<'id, str>`, use `simple` to get
+    /// `Container<'id, &'id [u8]>`, then call [`as_ref`][`Container::as_ref`]
+    /// to get `Container<'id, &'id [u8]>` and `Container<'id, &'id str>`.
+    ///
+    /// For owned values, Rust cannot support holding two separate views of
+    /// the same value where one of which is owned or mutable. In this case,
+    /// you will need to have transient sibling immutable views and batch
+    /// mutability. (`Container<'id, &'a str>`, `Container<'id, &'a [u8]>`)
+    pub fn simple(
+        &self,
+    ) -> Container<'id, &'_ [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>
+    where
+        Array: AsRef<[<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>,
+    {
+        Container {
+            id: self.id,
+            array: self.array.as_ref(),
+        }
     }
 }
 

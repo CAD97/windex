@@ -126,7 +126,9 @@ macro_rules! vettable_int {
                 let end = u32::try_from(self.end).map_err(|_| IndexError::OutOfBounds)?;
                 let start = Array::Item::vet(start, container)?;
                 let end = Array::Item::vet(end, container)?;
-                Ok(unsafe { perfect::Range::new(start.untrusted(), end.untrusted()) })
+                unsafe {
+                    Ok(perfect::Range::new(start.untrusted(), end.untrusted(), container.id()))
+                }
             }
         }
 
@@ -142,7 +144,9 @@ macro_rules! vettable_int {
             {
                 let end = u32::try_from(self.end).map_err(|_| IndexError::OutOfBounds)?;
                 let end = Array::Item::vet(end, container)?;
-                Ok(unsafe { perfect::Range::new(0, end.untrusted()) })
+                unsafe {
+                    Ok(perfect::Range::new(0, end.untrusted(), container.id()))
+                }
             }
         }
 
@@ -158,7 +162,9 @@ macro_rules! vettable_int {
             {
                 let start = u32::try_from(self.start).map_err(|_| IndexError::OutOfBounds)?;
                 let start = Array::Item::vet(start, container)?;
-                Ok(unsafe { perfect::Range::new(start.untrusted(), container.len()) })
+                unsafe {
+                    Ok(perfect::Range::new(start.untrusted(), container.len(), container.id()))
+                }
             }
         }
     )*};

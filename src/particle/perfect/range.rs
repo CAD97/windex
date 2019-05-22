@@ -17,8 +17,8 @@ pub struct Range<'id, Emptiness = Unknown> {
 
 /// Constructors
 impl<'id, Emptiness> Range<'id, Emptiness> {
-    pub(crate) unsafe fn new(start: u32, end: u32) -> Self {
-        Range::from(simple::Range::new(start, end))
+    pub(crate) unsafe fn new(start: u32, end: u32, guard: generativity::Id<'id>) -> Self {
+        Range::from(simple::Range::new(start, end, guard))
     }
 
     pub(crate) unsafe fn from(simple: simple::Range<'id, Emptiness>) -> Self {
@@ -48,12 +48,12 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
 impl<'id, Emptiness> Range<'id, Emptiness> {
     /// The start index of this range.
     pub fn start(self) -> Index<'id, Emptiness> {
-        unsafe { Index::new(self.simple.start().untrusted()) }
+        unsafe { Index::new(self.simple.start().untrusted(), self.simple.start().id()) }
     }
 
     /// The end index of this range.
     pub fn end(self) -> Index<'id, Unknown> {
-        unsafe { Index::new(self.simple.end().untrusted()) }
+        unsafe { Index::new(self.simple.end().untrusted(), self.simple.end().id()) }
     }
 }
 
@@ -75,7 +75,7 @@ impl<'id, Emptiness> Debug for Range<'id, Emptiness> {
 
 impl<'id> Default for Range<'id, Unknown> {
     fn default() -> Self {
-        unsafe { Range::new(0, 0) }
+        unsafe { Range::new(0, 0, generativity::Id::new()) }
     }
 }
 

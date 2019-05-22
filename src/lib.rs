@@ -54,7 +54,8 @@ where
     Array: TrustedContainer,
     F: for<'id> FnOnce(&'id Container<'id, Array>) -> Out,
 {
-    f(unsafe { &*(array as *const Array as *const Container<'_, Array>) })
+    generativity::make_guard!(guard);
+    f(Container::new_ref(array, guard))
 }
 
 /// Create an indexing scope for a mutably borrowed container.
@@ -73,7 +74,8 @@ where
     Array: TrustedContainerMut,
     F: for<'id> FnOnce(&'id Container<'id, Array>) -> Out,
 {
-    f(unsafe { &mut *(array as *mut Array as *mut Container<'_, Array>) })
+    generativity::make_guard!(guard);
+    f(Container::new_ref_mut(array, guard))
 }
 
 /// Create an indexing scope for an owned container.
@@ -90,7 +92,8 @@ where
     Array: TrustedContainer,
     F: for<'id> FnOnce(Container<'id, Array>) -> Out,
 {
-    f(unsafe { Container::new(array) })
+    generativity::make_guard!(guard);
+    f(Container::new(array, guard))
 }
 
 /// A utf8 string slice of exactly one codepoint.

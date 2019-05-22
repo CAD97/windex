@@ -10,19 +10,23 @@ use {
 
 pub struct Index<'id, Emptiness = NonEmpty> {
     #[allow(unused)]
-    id: Id<'id>,
+    id: generativity::Id<'id>,
     ix: u32,
     phantom: PhantomData<Emptiness>,
 }
 
 /// Constructors
 impl<'id, Emptiness> Index<'id, Emptiness> {
-    pub(crate) unsafe fn new(ix: u32) -> Self {
+    pub(crate) unsafe fn new(ix: u32, id: generativity::Id<'id>) -> Self {
         Index {
-            id: Id::default(),
+            id,
             ix,
             phantom: PhantomData,
         }
+    }
+
+    pub(crate) fn id(self) -> generativity::Id<'id> {
+        self.id
     }
 }
 
@@ -35,7 +39,7 @@ impl<'id, Emptiness> Index<'id, Emptiness> {
 
     /// This index without the emptiness proof.
     pub fn erased(self) -> Index<'id, Unknown> {
-        unsafe { Index::new(self.ix) }
+        unsafe { Index::new(self.ix, self.id) }
     }
 }
 
@@ -43,7 +47,7 @@ impl<'id, Emptiness> Index<'id, Emptiness> {
 impl<'id> Index<'id, NonEmpty> {
     /// The (simple) index directly after this one.
     pub fn after(self) -> Index<'id, Unknown> {
-        unsafe { Index::new(self.ix + 1) }
+        unsafe { Index::new(self.ix + 1, self.id) }
     }
 }
 
@@ -71,7 +75,7 @@ impl<'id, Emptiness> Debug for Index<'id, Emptiness> {
 
 impl<'id> Default for Index<'id, Unknown> {
     fn default() -> Self {
-        unsafe { Self::new(0) }
+        unsafe { Self::new(0, generativity::Id::new()) }
     }
 }
 

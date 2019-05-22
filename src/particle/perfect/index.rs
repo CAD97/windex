@@ -14,8 +14,8 @@ pub struct Index<'id, Emptiness = NonEmpty> {
 
 /// Constructors
 impl<'id, Emptiness> Index<'id, Emptiness> {
-    pub(crate) unsafe fn new(ix: u32) -> Self {
-        Index::from(simple::Index::new(ix))
+    pub(crate) unsafe fn new(ix: u32, guard: generativity::Id<'id>) -> Self {
+        Index::from(simple::Index::new(ix, guard))
     }
 
     pub(crate) unsafe fn from(simple: simple::Index<'id, Emptiness>) -> Self {
@@ -59,7 +59,7 @@ impl<'id, Emptiness> Debug for Index<'id, Emptiness> {
 
 impl<'id> Default for Index<'id, Unknown> {
     fn default() -> Self {
-        unsafe { Index::new(0) }
+        unsafe { Index::new(0, generativity::Id::new()) }
     }
 }
 

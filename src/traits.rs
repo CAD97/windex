@@ -50,7 +50,7 @@ where
     ) -> Result<Index<'id, Unknown>, IndexError> {
         let len = container.len();
         match ix {
-            i if i == len => unsafe { Ok(Index::new(ix)) },
+            i if i == len => unsafe { Ok(Index::new(ix, container.id())) },
             i if i < len => unsafe {
                 Self::vet_inbounds(ix, container)
                     .map(Index::erased)

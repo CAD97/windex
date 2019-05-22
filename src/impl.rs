@@ -138,7 +138,7 @@ unsafe impl<T> TrustedItem<[T]> for T {
         container: &Container<'id, [T]>,
     ) -> Result<Index<'id, Unknown>, IndexError> {
         if ix <= container.len() {
-            Ok(unsafe { Index::new(ix) })
+            Ok(unsafe { Index::new(ix, container.id()) })
         } else {
             Err(IndexError::OutOfBounds)
         }
@@ -149,7 +149,7 @@ unsafe impl<T> TrustedItem<[T]> for T {
         container: &Container<'id, [T]>,
     ) -> Option<Index<'id, NonEmpty>> {
         debug_assert!(ix < container.len());
-        Some(Index::new(ix))
+        Some(Index::new(ix, container.id()))
     }
 }
 
@@ -228,7 +228,7 @@ unsafe impl TrustedItem<str> for Character {
         let leading_byte = *container.untrusted().as_bytes().get_unchecked(i);
         if is_leading_byte(leading_byte) {
             debug_assert!(container.untrusted().is_char_boundary(i));
-            Some(Index::new(ix))
+            Some(Index::new(ix, container.id()))
         } else {
             debug_assert!(!container.untrusted().is_char_boundary(i));
             None

@@ -20,19 +20,37 @@ where
     Array: TrustedContainer,
 {
     #[allow(unused)]
-    id: Id<'id>,
+    id: generativity::Id<'id>,
     array: Array,
 }
 
-impl<'id, Array> Container<'id, Array>
+impl<'id, Array: ?Sized> Container<'id, Array>
 where
     Array: TrustedContainer,
 {
-    pub(crate) unsafe fn new(array: Array) -> Self {
+    pub(crate) fn new(array: Array, guard: generativity::Guard<'id>) -> Self
+    where
+        Array: Sized,
+    {
         Container {
-            id: Id::default(),
+            id: guard.into(),
             array,
         }
+    }
+
+    pub(crate) fn new_ref<'a>(array: &'a Array, _guard: generativity::Guard<'id>) -> &'a Self {
+        unsafe { &*(array as *const Array as *const Container<'id, Array>) }
+    }
+
+    pub(crate) fn new_ref_mut<'a>(
+        array: &'a mut Array,
+        _guard: generativity::Guard<'id>,
+    ) -> &'a mut Self {
+        unsafe { &mut *(array as *mut Array as *mut Container<'id, Array>) }
+    }
+
+    pub(crate) fn id(&self) -> generativity::Id<'id> {
+        self.id
     }
 }
 
@@ -76,17 +94,17 @@ where
 
     /// The full range of the container.
     pub fn as_range(&self) -> perfect::Range<'id, Unknown> {
-        unsafe { perfect::Range::new(0, self.len()) }
+        unsafe { perfect::Range::new(0, self.len(), self.id) }
     }
 
     /// The start index of the container.
     pub fn start(&self) -> perfect::Index<'id, Unknown> {
-        unsafe { perfect::Index::new(0) }
+        unsafe { perfect::Index::new(0, self.id()) }
     }
 
     /// The end index of the container. (This is the one-past-the-end index.)
     pub fn end(&self) -> perfect::Index<'id, Unknown> {
-        unsafe { perfect::Index::new(self.len()) }
+        unsafe { perfect::Index::new(self.len(), self.id()) }
     }
 
     /// Take a internally trusted reference to the container.
@@ -411,6 +429,9 @@ where
     Array: TrustedContainer,
 {
     fn clone(&self) -> Self {
-        unsafe { Container::new(self.array.clone()) }
+        Container {
+            array: self.untrusted().clone(),
+            id: self.id(),
+        }
     }
 }

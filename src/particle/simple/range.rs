@@ -19,11 +19,11 @@ pub struct Range<'id, Emptiness = Unknown> {
 
 /// Constructors
 impl<'id, Emptiness> Range<'id, Emptiness> {
-    pub(crate) unsafe fn new(start: u32, end: u32) -> Self {
+    pub(crate) unsafe fn new(start: u32, end: u32, guard: generativity::Id<'id>) -> Self {
         debug_assert!(start < end);
         Range {
-            start: Index::new(start),
-            end: Index::new(end),
+            start: Index::new(start, guard),
+            end: Index::new(end, guard),
             phantom: PhantomData,
         }
     }
@@ -38,7 +38,13 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
 
     /// This range without the emptiness proof.
     pub fn erased(self) -> Range<'id, Unknown> {
-        unsafe { Range::new(self.start.untrusted(), self.end.untrusted()) }
+        unsafe {
+            Range::new(
+                self.start.untrusted(),
+                self.end.untrusted(),
+                self.start.id(),
+            )
+        }
     }
 }
 
@@ -46,7 +52,7 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
 impl<'id, Emptiness> Range<'id, Emptiness> {
     /// The start index of this range.
     pub fn start(self) -> Index<'id, Emptiness> {
-        unsafe { Index::new(self.start.untrusted()) }
+        unsafe { Index::new(self.start.untrusted(), self.start.id()) }
     }
 
     /// The end index of this range.
@@ -79,7 +85,7 @@ impl<'id, Emptiness> Debug for Range<'id, Emptiness> {
 
 impl<'id> Default for Range<'id, Unknown> {
     fn default() -> Self {
-        unsafe { Range::new(0, 0) }
+        unsafe { Range::new(0, 0, generativity::Id::new()) }
     }
 }
 

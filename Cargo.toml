@@ -18,6 +18,7 @@ license = "MIT OR Apache-2.0"
 name = "indexing"
 
 [dependencies]
+generativity = "1.0.0"
 new_debug_unreachable = "1.0.3"
 
 [features]

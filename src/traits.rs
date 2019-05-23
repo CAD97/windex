@@ -23,7 +23,6 @@ pub unsafe trait TrustedContainer {
     unsafe fn slice_unchecked(&self, r: ops::Range<u32>) -> &Self::Slice;
 }
 
-// In what cases does a type impl TrustedContainer and not TrustedContainerMut?
 pub unsafe trait TrustedContainerMut: TrustedContainer {
     unsafe fn get_unchecked_mut(&mut self, i: u32) -> &mut Self::Item;
     unsafe fn slice_unchecked_mut(&mut self, r: ops::Range<u32>) -> &mut Self::Slice;

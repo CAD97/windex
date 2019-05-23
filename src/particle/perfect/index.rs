@@ -21,6 +21,10 @@ impl<'id, Emptiness> Index<'id, Emptiness> {
     pub(crate) unsafe fn from(simple: simple::Index<'id, Emptiness>) -> Self {
         Index { simple }
     }
+
+    pub(crate) fn id(self) -> generativity::Id<'id> {
+        self.simple.id()
+    }
 }
 
 /// Downgrade

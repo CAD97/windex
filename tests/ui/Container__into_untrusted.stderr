@@ -1,0 +1,16 @@
+error[E0597]: `v` does not live long enough
+  --> $DIR/Container__into_untrusted.rs:7:17
+   |
+5  |     scope_val(v, |mut v| {
+   |                   ----- has type `windex::container::Container<'1, std::vec::Vec<i32>>`
+6  |         let _ix = v.vet(0).unwrap();
+7  |         let r = v.as_ref_mut().into_untrusted();
+   |                 ^-------------
+   |                 |
+   |                 borrowed value does not live long enough
+   |                 argument requires that `v` is borrowed for `'1`
+...
+10 |     })
+   |     - `v` dropped here while still borrowed
+
+For more information about this error, try `rustc --explain E0597`.

@@ -1,27 +1,27 @@
 [package]
-name = "indexing-str"
+name = "windex"
 version = "0.2.0"
 edition = "2018"
 
 authors = [
-    "bluss",
     "Christopher Durham (CAD97) <cad97@cad97.com>",
 ]
-description = "Sound unchecked indexing using “generativity”; a fork of bluss/indexing"
-repository = "https://github.com/CAD97/indexing"
+description = "Wonderful sound unchecked indexing using lifetime generativity"
+repository = "https://github.com/CAD97/windex"
 readme = "./README.md"
-keywords = ["data-structure","generativity","no_std","indexing"]
-categories = ["no-std","rust-patterns"]
+keywords = ["data-structure", "generativity", "no_std", "indexing"]
+categories = ["no-std", "rust-patterns"]
 license = "MIT OR Apache-2.0"
 
 [lib]
-name = "indexing"
+name = "windex"
 
 [dependencies]
+generativity = "1.0.0"
 new_debug_unreachable = "1.0.3"
 
 [features]
-doc = [] # opt in to #[doc(cfg(...))]
+doc = [] # opt in to #[doc(cfg(...))] and intra-doc link imports
 
 [dev-dependencies]
 trybuild = "1.0.4"

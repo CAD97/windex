@@ -1,12 +1,11 @@
 #[cfg(feature = "doc")]
-use crate::{scope, scope_ref};
+use crate::{scope, scope_mut, scope_val};
 use {
-    crate::{
-        index::{Index, IndexError, Range},
-        proof::{Id, NonEmpty, Unknown},
-        traits::{Idx, TrustedContainer, TrustedItem},
+    crate::{particle::*, proof::*, traits::*},
+    core::{
+        convert::{AsMut, AsRef},
+        fmt, mem, ops,
     },
-    core::{fmt, ops},
 };
 
 /// A branded container, that allows access only to indices and ranges with
@@ -24,174 +23,430 @@ where
     Array: TrustedContainer,
 {
     #[allow(unused)]
-    id: Id<'id>,
+    id: generativity::Id<'id>,
     array: Array,
-}
-
-impl<'id, Array> Container<'id, Array>
-where
-    Array: TrustedContainer,
-{
-    pub(crate) unsafe fn new(array: Array) -> Self {
-        Container {
-            id: Id::default(),
-            array,
-        }
-    }
 }
 
 impl<'id, Array: ?Sized> Container<'id, Array>
 where
     Array: TrustedContainer,
 {
+    pub(crate) fn new(array: Array, guard: generativity::Guard<'id>) -> Self
+    where
+        Array: Sized,
+    {
+        Container {
+            id: guard.into(),
+            array,
+        }
+    }
+
+    pub(crate) fn new_ref<'a>(array: &'a Array, _guard: generativity::Guard<'id>) -> &'a Self {
+        unsafe { &*(array as *const Array as *const Container<'id, Array>) }
+    }
+
+    pub(crate) fn new_ref_mut<'a>(
+        array: &'a mut Array,
+        _guard: generativity::Guard<'id>,
+    ) -> &'a mut Self {
+        unsafe { &mut *(array as *mut Array as *mut Container<'id, Array>) }
+    }
+
+    pub(crate) fn id(&self) -> generativity::Id<'id> {
+        self.id
+    }
+}
+
+/// Intrinsic properties
+impl<'id, Array: ?Sized> Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
     /// This container without the branding.
-    ///
-    /// # Note
-    ///
-    /// The returned lifetime of `&Array` is _not_ `'id`! It's completely
-    /// valid to drop the container during the [`scope`], in which case this
-    /// reference would become invalid. If you need a longer lifetime,
-    /// consider using [`scope_ref`] such that the reference is guaranteed to
-    /// live for the entire scope.
     pub fn untrusted(&self) -> &Array {
         &self.array
     }
 
+    /// This container without the branding.
+    ///
+    /// # Safety
+    ///
+    /// Any indices of the array cannot be invalidated. i.e., variable size
+    /// collections such as `Vec` and `String` can be grown or modified, but
+    /// cannot remove any elements.
+    pub unsafe fn untrusted_mut(&mut self) -> &mut Array
+    {
+        &mut self.array
+    }
+
+    /// This container without the branding.
+    ///
+    /// # Note
+    ///
+    /// The returned array is required to be valid for `'id`, i.e. the entire
+    /// indexing scope. This is to prevent you from writing a safe version of
+    /// [`untrusted_mut`](`Container::untrusted_mut`):
+    ///
+    /// ```rust,compile_fail
+    /// # use windex::scope_val;
+    /// let v = vec![0];
+    /// scope_val(v, |mut v| {
+    ///     let ix = v.vet(0).unwrap();
+    ///     let r = v.as_ref_mut().into_untrusted();
+    ///     r.clear();
+    ///     // ix is now invalid logically but not statically
+    /// })
+    /// ```
+    ///
+    /// ```text
+    /// error[E0597]: `v` does not live long enough
+    ///   -->
+    ///    |
+    /// 2  | scope_val(v, |mut v| {
+    ///    |               ----- has type `windex::container::Container<'1, std::vec::Vec<i32>>`
+    /// 3  |     let ix = v.vet(0).unwrap();
+    /// 4  |     let r = v.as_ref_mut().into_untrusted();
+    ///    |             ^-------------
+    ///    |             |
+    ///    |             borrowed value does not live long enough
+    ///    |             argument requires that `v` is borrowed for `'1`
+    /// ...
+    /// 7  | })
+    ///    | - `v` dropped here while still borrowed
+    /// ```
+    ///
+    /// In effect, this means that you can only `into_untrusted` on the
+    /// container given to you from your `scope`/`scope_[mut|val]` call.
+    pub fn into_untrusted(self) -> Array
+    where
+        Array: Sized + 'id,
+    {
+        self.array
+    }
+
     /// The length of the container in base item units.
-    pub fn unit_len(&self) -> usize {
-        self.array.unit_len()
+    pub fn len(&self) -> u32 {
+        self.array.len()
     }
 
-    /// The zero index without a proof of contents.
-    pub fn start<I: Idx>(&self) -> Index<'id, I, Unknown> {
-        unsafe { Index::new(I::zero()) }
-    }
-
-    /// The index one past the end of this container.
-    pub fn end<I: Idx>(&self) -> Index<'id, I, Unknown> {
-        let len = I::from_usize(self.unit_len()).expect("len");
-        unsafe { Index::new(len) }
-    }
-
-    /// The empty range `0..0`.
-    pub fn empty_range<I: Idx>(&self) -> Range<'id, I, Unknown> {
-        Range::from(self.start(), self.start())
+    /// Is this container empty?
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     /// The full range of the container.
-    pub fn range<I: Idx>(&self) -> Range<'id, I, Unknown> {
-        Range::from(self.start(), self.end())
+    pub fn as_range(&self) -> perfect::Range<'id, Unknown> {
+        unsafe { perfect::Range::new(0, self.len(), self.id()) }
     }
 
-    /// Vet an absolute index.
-    pub fn vet<I: Idx>(&self, idx: I) -> Result<Index<'id, I, NonEmpty>, IndexError> {
-        if idx < self.end().untrusted() {
-            unsafe { TrustedItem::vet_inbounds(idx, self).ok_or(IndexError::Invalid) }
-        } else {
-            Err(IndexError::OutOfBounds)
+    /// The start index of the container.
+    pub fn start(&self) -> perfect::Index<'id, Unknown> {
+        unsafe { perfect::Index::new(0, self.id()) }
+    }
+
+    /// The end index of the container. (This is the one-past-the-end index.)
+    pub fn end(&self) -> perfect::Index<'id, Unknown> {
+        unsafe { perfect::Index::new(self.len(), self.id()) }
+    }
+
+    /// Take a internally trusted reference to the container.
+    pub fn as_ref(&self) -> Container<'id, &'_ Array> {
+        unsafe { mem::transmute(&self.array) }
+    }
+
+    /// Take an internally trusted mutable reference to the container.
+    pub fn as_ref_mut(&mut self) -> Container<'id, &'_ mut Array>
+    {
+        unsafe { mem::transmute(&mut self.array) }
+    }
+
+    /// Convert this container into a simple container of the representational
+    /// unit slice. The lifetime of the returned container _must_ be tied to
+    /// the borrow here to enforce that the backing array is not mutated; if
+    /// you want `Container<'id, &'id str>` and `Container<'id, &'id [u8]>`,
+    /// use [`scope`] to get a `&'id Container<'id, str>`, use `simple` to get
+    /// `Container<'id, &'id [u8]>`, then call [`as_ref`][`Container::as_ref`]
+    /// to get `Container<'id, &'id [u8]>` and `Container<'id, &'id str>`.
+    ///
+    /// For owned values, Rust cannot support holding two separate views of
+    /// the same value where one of which is owned or mutable. In this case,
+    /// you will need to have transient sibling immutable views and batch
+    /// mutability. (`Container<'id, &'a str>`, `Container<'id, &'a [u8]>`)
+    pub fn simple(
+        &self,
+    ) -> Container<'id, &'_ [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>
+    where
+        Array: AsRef<[<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>,
+        for<'a> &'a [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]:
+            TrustedContainer,
+    {
+        Container {
+            id: self.id,
+            array: self.array.as_ref(),
         }
     }
 
-    /// Vet an absolute range.
-    // Future: Error type `EitherOrBoth<IndexError, IndexError>`?
-    pub fn vet_range<I: Idx>(
-        &self,
-        r: ops::Range<I>,
-    ) -> Result<Range<'id, I, Unknown>, IndexError> {
-        Ok(Range::from(
-            TrustedItem::vet(r.start, self)?,
-            TrustedItem::vet(r.end, self)?,
-        ))
-    }
-
-    /// Split the container in two at the given index,
-    /// such that the second range contains the index.
-    pub fn split_at<I: Idx, P>(
-        &self,
-        idx: Index<'id, I, P>,
-    ) -> (Range<'id, I, Unknown>, Range<'id, I, P>) {
-        (self.before(idx), self.after_inclusive(idx))
-    }
-
-    /// Split the container in two after the given index,
-    /// such that the first range contains the index.
-    pub fn split_after<I: Idx>(
-        &self,
-        idx: Index<'id, I, NonEmpty>,
-    ) -> (Range<'id, I, NonEmpty>, Range<'id, I, Unknown>) {
-        (self.before_inclusive(idx), self.after(idx))
-    }
-
-    /// Split around the range `r` creating ranges `0..r.start` and `r.end..`.
-    ///
-    /// The input `r` and return values `(s, t)` cover the whole container in
-    /// the order `s`, `r`, `t`.
-    pub fn split_around<I: Idx, P>(
-        &self,
-        r: Range<'id, I, P>,
-    ) -> (Range<'id, I, Unknown>, Range<'id, I, Unknown>) {
-        (self.before(r.start()), self.after_inclusive(r.end()))
-    }
-
-    /// Return the range before but not including the index.
-    pub fn before<I: Idx, P>(&self, idx: Index<'id, I, P>) -> Range<'id, I, Unknown> {
-        Range::from(self.start(), idx)
-    }
-
-    /// Return the range before the index, inclusive.
-    pub fn before_inclusive<I: Idx>(
-        &self,
-        idx: Index<'id, I, NonEmpty>,
-    ) -> Range<'id, I, NonEmpty> {
-        let after = TrustedItem::after(idx, self);
-        unsafe { Range::new_nonempty(self.start().untrusted(), after.untrusted()) }
-    }
-
-    /// Return the range after but not including the index.
-    pub fn after<I: Idx>(&self, idx: Index<'id, I, NonEmpty>) -> Range<'id, I, Unknown> {
-        let after = TrustedItem::after(idx, self);
-        Range::from(after, self.end())
-    }
-
-    /// Return the range after the index, inclusive.
-    pub fn after_inclusive<I: Idx, P>(&self, idx: Index<'id, I, P>) -> Range<'id, I, P> {
-        unsafe { Range::new_any(idx.untrusted(), self.end().untrusted()) }
-    }
-
-    /// Advance an index to the next item in the container, if there is one.
-    pub fn advance<I: Idx>(&self, idx: Index<'id, I, NonEmpty>) -> Option<Index<'id, I, NonEmpty>> {
-        TrustedItem::advance(idx, self)
-    }
-
-    /// Advance an index by a given base unit offset,
-    /// if the index at said offset is a valid item index.
-    pub fn advance_by<I: Idx, P>(
-        &self,
-        idx: Index<'id, I, P>,
-        offset: usize,
-    ) -> Result<Index<'id, I, NonEmpty>, IndexError> {
-        self.vet(idx.untrusted().add(offset))
-    }
-
-    /// Retreat an index to the prior item in the container, if there is one.
-    pub fn retreat<I: Idx, P>(&self, idx: Index<'id, I, P>) -> Option<Index<'id, I, NonEmpty>> {
-        TrustedItem::before(idx, self)
-    }
-
-    /// Decrease an index by a given base unit offset,
-    /// if the index at said offset is a valid item index.
-    pub fn decrease_by<I: Idx, P>(
-        &self,
-        idx: Index<'id, I, P>,
-        offset: usize,
-    ) -> Result<Index<'id, I, NonEmpty>, IndexError> {
-        if idx.untrusted().as_usize() >= offset {
-            self.vet(idx.untrusted().sub(offset))
-        } else {
-            Err(IndexError::OutOfBounds)
+    /// Convert this container into a mutable simple container of the
+    /// representational unit slice. See [`simple`](`Container::simple`)
+    /// for more details.
+    pub fn simple_mut(
+        &mut self,
+    ) -> Container<'id, &'_ mut [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>
+    where
+        Array: AsMut<[<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>,
+        for<'a> &'a mut [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]:
+            TrustedContainerMut,
+    {
+        Container {
+            id: self.id,
+            array: self.array.as_mut(),
         }
     }
 }
+
+/// Upgrading particles
+impl<'id, Array: ?Sized> Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
+    /// Vet a particle for being inbounds and indexable to this container.
+    pub fn vet<V: Vettable<'id>>(&self, particle: V) -> Result<V::ContainerVetted, IndexError> {
+        particle.vet_in_container(self)
+    }
+
+    /// Vet an index for being valid, including the one-past-the-end index.
+    pub fn vet_or_end(&self, particle: u32) -> Result<perfect::Index<'id, Unknown>, IndexError> {
+        Ok(if particle == self.len() {
+            self.end()
+        } else {
+            self.vet(particle)?.erased()
+        })
+    }
+}
+
+// ~~~ Accessors ~~~ //
+
+impl<'id, Array: ?Sized> ops::Index<ops::RangeFull> for Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
+    type Output = Array::Slice;
+
+    fn index(&self, _index: ops::RangeFull) -> &Self::Output {
+        unsafe { self.array.slice_unchecked(0..self.len()) }
+    }
+}
+
+impl<'id, Array: ?Sized> ops::IndexMut<ops::RangeFull> for Container<'id, Array>
+where
+    Array: TrustedContainerMut,
+{
+    fn index_mut(&mut self, _index: ops::RangeFull) -> &mut Self::Output {
+        unsafe { self.array.slice_unchecked_mut(0..self.len()) }
+    }
+}
+
+// ~~ Perfect ~~ //
+
+// ~ ref ~ //
+
+impl<'id, Array: ?Sized, P> ops::Index<perfect::Range<'id, P>> for Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
+    type Output = Array::Slice;
+
+    fn index(&self, index: perfect::Range<'id, P>) -> &Self::Output {
+        unsafe { self.array.slice_unchecked(index.untrusted()) }
+    }
+}
+
+impl<'id, Array: ?Sized, P> ops::Index<ops::RangeTo<perfect::Index<'id, P>>>
+    for Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
+    type Output = Array::Slice;
+
+    fn index(&self, index: ops::RangeTo<perfect::Index<'id, P>>) -> &Self::Output {
+        unsafe { self.array.slice_unchecked(0..index.end.untrusted()) }
+    }
+}
+
+impl<'id, Array: ?Sized, P> ops::Index<ops::RangeFrom<perfect::Index<'id, P>>>
+    for Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
+    type Output = Array::Slice;
+
+    fn index(&self, index: ops::RangeFrom<perfect::Index<'id, P>>) -> &Self::Output {
+        unsafe {
+            self.array
+                .slice_unchecked(index.start.untrusted()..self.len())
+        }
+    }
+}
+
+impl<'id, Array: ?Sized> ops::Index<perfect::Index<'id, NonEmpty>> for Container<'id, Array>
+where
+    Array: TrustedContainer,
+{
+    type Output = Array::Item;
+
+    fn index(&self, index: perfect::Index<'id, NonEmpty>) -> &Self::Output {
+        unsafe { self.array.get_unchecked(index.untrusted()) }
+    }
+}
+
+// ~ mut ~ //
+
+impl<'id, Array: ?Sized, P> ops::IndexMut<perfect::Range<'id, P>> for Container<'id, Array>
+where
+    Array: TrustedContainerMut,
+{
+    fn index_mut(&mut self, index: perfect::Range<'id, P>) -> &mut Self::Output {
+        unsafe { self.array.slice_unchecked_mut(index.untrusted()) }
+    }
+}
+
+impl<'id, Array: ?Sized, P> ops::IndexMut<ops::RangeTo<perfect::Index<'id, P>>>
+    for Container<'id, Array>
+where
+    Array: TrustedContainerMut,
+{
+    fn index_mut(&mut self, index: ops::RangeTo<perfect::Index<'id, P>>) -> &mut Self::Output {
+        unsafe { self.array.slice_unchecked_mut(0..index.end.untrusted()) }
+    }
+}
+
+impl<'id, Array: ?Sized, P> ops::IndexMut<ops::RangeFrom<perfect::Index<'id, P>>>
+    for Container<'id, Array>
+where
+    Array: TrustedContainerMut,
+{
+    fn index_mut(&mut self, index: ops::RangeFrom<perfect::Index<'id, P>>) -> &mut Self::Output {
+        unsafe {
+            self.array
+                .slice_unchecked_mut(index.start.untrusted()..self.len())
+        }
+    }
+}
+
+impl<'id, Array: ?Sized> ops::IndexMut<perfect::Index<'id, NonEmpty>> for Container<'id, Array>
+where
+    Array: TrustedContainerMut,
+{
+    fn index_mut(&mut self, index: perfect::Index<'id, NonEmpty>) -> &mut Self::Output {
+        unsafe { self.array.get_unchecked_mut(index.untrusted()) }
+    }
+}
+
+// ~~ Simple ~~ //
+
+// ~ ref ~ //
+
+impl<'id, Array: ?Sized, P> ops::Index<simple::Range<'id, P>> for Container<'id, Array>
+where
+    Array: TrustedContainer,
+    Array::Item: TrustedUnit<Array>,
+{
+    type Output = Array::Slice;
+
+    fn index(&self, index: simple::Range<'id, P>) -> &Self::Output {
+        unsafe { self.array.slice_unchecked(index.untrusted()) }
+    }
+}
+
+impl<'id, Array: ?Sized, P> ops::Index<ops::RangeTo<simple::Index<'id, P>>>
+    for Container<'id, Array>
+where
+    Array: TrustedContainer,
+    Array::Item: TrustedUnit<Array>,
+{
+    type Output = Array::Slice;
+
+    fn index(&self, index: ops::RangeTo<simple::Index<'id, P>>) -> &Self::Output {
+        unsafe { self.array.slice_unchecked(0..index.end.untrusted()) }
+    }
+}
+
+impl<'id, Array: ?Sized, P> ops::Index<ops::RangeFrom<simple::Index<'id, P>>>
+    for Container<'id, Array>
+where
+    Array: TrustedContainer,
+    Array::Item: TrustedUnit<Array>,
+{
+    type Output = Array::Slice;
+
+    fn index(&self, index: ops::RangeFrom<simple::Index<'id, P>>) -> &Self::Output {
+        unsafe {
+            self.array
+                .slice_unchecked(index.start.untrusted()..self.len())
+        }
+    }
+}
+
+impl<'id, Array: ?Sized> ops::Index<simple::Index<'id, NonEmpty>> for Container<'id, Array>
+where
+    Array: TrustedContainer,
+    Array::Item: TrustedUnit<Array>,
+{
+    type Output = Array::Item;
+
+    fn index(&self, index: simple::Index<'id, NonEmpty>) -> &Self::Output {
+        unsafe { self.array.get_unchecked(index.untrusted()) }
+    }
+}
+
+// ~ mut ~ //
+
+impl<'id, Array: ?Sized, P> ops::IndexMut<simple::Range<'id, P>> for Container<'id, Array>
+where
+    Array: TrustedContainerMut,
+    Array::Item: TrustedUnit<Array>,
+{
+    fn index_mut(&mut self, index: simple::Range<'id, P>) -> &mut Self::Output {
+        unsafe { self.array.slice_unchecked_mut(index.untrusted()) }
+    }
+}
+
+impl<'id, Array: ?Sized, P> ops::IndexMut<ops::RangeTo<simple::Index<'id, P>>>
+    for Container<'id, Array>
+where
+    Array: TrustedContainerMut,
+    Array::Item: TrustedUnit<Array>,
+{
+    fn index_mut(&mut self, index: ops::RangeTo<simple::Index<'id, P>>) -> &mut Self::Output {
+        unsafe { self.array.slice_unchecked_mut(0..index.end.untrusted()) }
+    }
+}
+
+impl<'id, Array: ?Sized, P> ops::IndexMut<ops::RangeFrom<simple::Index<'id, P>>>
+    for Container<'id, Array>
+where
+    Array: TrustedContainerMut,
+    Array::Item: TrustedUnit<Array>,
+{
+    fn index_mut(&mut self, index: ops::RangeFrom<simple::Index<'id, P>>) -> &mut Self::Output {
+        unsafe {
+            self.array
+                .slice_unchecked_mut(index.start.untrusted()..self.len())
+        }
+    }
+}
+
+impl<'id, Array: ?Sized> ops::IndexMut<simple::Index<'id, NonEmpty>> for Container<'id, Array>
+where
+    Array: TrustedContainerMut,
+    Array::Item: TrustedUnit<Array>,
+{
+    fn index_mut(&mut self, index: simple::Index<'id, NonEmpty>) -> &mut Self::Output {
+        unsafe { self.array.get_unchecked_mut(index.untrusted()) }
+    }
+}
+
+// ~~~ Deref ~~~ //
 
 impl<'id, Array: ?Sized, D> ops::Deref for Container<'id, D>
 where
@@ -215,66 +470,14 @@ where
     }
 }
 
-impl<'id, Array: ?Sized, I> ops::Index<Index<'id, I, NonEmpty>> for Container<'id, Array>
-where
-    Array: TrustedContainer,
-    I: Idx,
-{
-    type Output = Array::Item;
+// ~~~ Standard traits ~~~ //
 
-    fn index(&self, index: Index<'id, I, NonEmpty>) -> &Self::Output {
-        unsafe { self.array.get_unchecked(index.untrusted().as_usize()) }
-    }
-}
-
-impl<'id, Array: ?Sized, I, P> ops::Index<Range<'id, I, P>> for Container<'id, Array>
-where
-    Array: TrustedContainer,
-    I: Idx,
-{
-    type Output = Array::Slice;
-
-    fn index(&self, r: Range<'id, I, P>) -> &Self::Output {
-        unsafe {
-            self.array
-                .slice_unchecked(r.start().untrusted().as_usize()..r.end().untrusted().as_usize())
-        }
-    }
-}
-
-impl<'id, Array: ?Sized, I, P> ops::Index<ops::RangeFrom<Index<'id, I, P>>>
-    for Container<'id, Array>
-where
-    Array: TrustedContainer,
-    I: Idx,
-{
-    type Output = Array::Slice;
-
-    fn index(&self, r: ops::RangeFrom<Index<'id, I, P>>) -> &Self::Output {
-        &self[Range::from(r.start, self.end())]
-    }
-}
-
-impl<'id, Array: ?Sized, I, P> ops::Index<ops::RangeTo<Index<'id, I, P>>> for Container<'id, Array>
-where
-    Array: TrustedContainer,
-    I: Idx,
-{
-    type Output = Array::Slice;
-
-    fn index(&self, r: ops::RangeTo<Index<'id, I, P>>) -> &Self::Output {
-        &self[Range::from(self.start(), r.end)]
-    }
-}
-
-impl<'id, Array: ?Sized> ops::Index<ops::RangeFull> for Container<'id, Array>
+impl<'id, Array: ?Sized + fmt::Debug> fmt::Debug for Container<'id, Array>
 where
     Array: TrustedContainer,
 {
-    type Output = Array::Slice;
-
-    fn index(&self, _: ops::RangeFull) -> &Self::Output {
-        &self[Range::<usize, _>::from(self.start(), self.end())]
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Container<'id>").field(&&self.array).finish()
     }
 }
 
@@ -285,15 +488,9 @@ where
     Array: TrustedContainer,
 {
     fn clone(&self) -> Self {
-        unsafe { Container::new(self.array.clone()) }
-    }
-}
-
-impl<'id, Array: ?Sized + fmt::Debug> fmt::Debug for Container<'id, Array>
-where
-    Array: TrustedContainer,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Container<'id>").field(&&self.array).finish()
+        Container {
+            array: self.untrusted().clone(),
+            id: self.id(),
+        }
     }
 }

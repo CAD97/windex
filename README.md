@@ -1,20 +1,15 @@
-# indexing
+# Windex - Wonderful, clean statically checked indices
 
-"Sound unchecked indexing" in Rust using "generativity"
-(branding by unique lifetime parameter).
+([Name credit goes to @ManishEarth](https://twitter.com/ManishEarth/status/1130694489767440384))
 
 > You seemed to want guarantees stronger than I thought possible.  
 > \- eddyb
 
-Well, they're here!
+Well, they're here! Lovingly inspired by [bluss/indexing],
+but updated for the best practices of the 2018 edition.
 
-This is a rewritten fork of https://github.com/bluss/indexing, with the
-core design of generativity and API beats lovingly borrowed from thence.
+The README will get an overhaul once the version 0.2 is finished baking;
+in the mean time, [bluss_indexing.md](bluss_indexing.md) provides a
+mapping between the prior API surface and that exposed by windex.
 
-This fork offers sound unchecked indexing for string slices as well as
-normal array slices, and avoids some [pitfalls][bluss/indexing#11] that
-the original library fell victim to, just by virtue of being four years
-old. It also updates the API slightly (so it's not a drop-in replacement,
-sorry) to more align with the author's API design ideals.
-
-  [bluss/indexing#11]: <https://github.com/bluss/indexing/issues/11>
+  [bluss/indexing]: <https://github.com/bluss/indexing>

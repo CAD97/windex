@@ -1,10 +1,11 @@
 use {
     crate::{
-        particle::{perfect, simple::Index},
+        particle::{perfect, simple::Index, Vettable},
         proof::*,
     },
     core::{
         cmp,
+        convert::{TryFrom, TryInto},
         fmt::{self, Debug},
         hash::{self, Hash},
         marker::PhantomData,
@@ -21,7 +22,7 @@ pub struct Range<'id, Emptiness = Unknown> {
 /// Constructors
 impl<'id, Emptiness> Range<'id, Emptiness> {
     pub(crate) unsafe fn new(start: u32, end: u32, guard: generativity::Id<'id>) -> Self {
-        debug_assert!(start < end);
+        debug_assert!(start <= end);
         Range {
             start: Index::new(start, guard),
             end: Index::new(end, guard),
@@ -42,7 +43,7 @@ impl<'id> Range<'id, Unknown> {
     }
 }
 
-/// Downgrade
+/// Proof manipulation
 impl<'id, Emptiness> Range<'id, Emptiness> {
     /// This range without the brand.
     pub fn untrusted(self) -> ops::Range<u32> {
@@ -57,6 +58,15 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
                 self.end.untrusted(),
                 self.start.id(),
             )
+        }
+    }
+
+    /// This range with a proof of non-emptiness.
+    pub fn nonempty(self) -> Option<Range<'id, NonEmpty>> {
+        if !self.is_empty() {
+            Some(unsafe { Range::new(self.start().untrusted(), self.end().untrusted(), self.id()) })
+        } else {
+            None
         }
     }
 }
@@ -88,12 +98,15 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
         self.start() <= index && index < self.end()
     }
 
-    /// Vet an untrusted index for being in range.
-    pub fn vet(self, ix: u32) -> Option<Index<'id, Emptiness>> {
-        // Safe because we check it immediately
-        let index = unsafe { Index::new(ix, self.id()) };
-        if self.contains(index) {
-            Some(index)
+    /// Vet a particle for being within this range.
+    pub fn vet<V: Vettable<'id>>(self, particle: V) -> Option<V::RangeVetted> {
+        particle.vet_in_range(self)
+    }
+
+    /// Vet an index for being in this range or the one-past-the-end index.
+    pub fn vet_or_end(self, particle: u32) -> Option<Index<'id, Unknown>> {
+        if self.start().untrusted() <= particle && particle <= self.end().untrusted() {
+            Some(unsafe { Index::new(particle, self.id()) })
         } else {
             None
         }
@@ -105,8 +118,8 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
     /// Split this range at an index, if that index is in the range.
     ///
     /// The given index is contained in the second range.
-    pub fn split_at<P>(self, index: Index<'id, P>) -> Option<(Range<'id>, Range<'id, Emptiness>)> {
-        if self.contains(index) {
+    pub fn split_at<P>(self, index: Index<'id, P>) -> Option<(Range<'id>, Range<'id, P>)> {
+        if self.start() <= index && index <= self.end() {
             unsafe {
                 Some((
                     Range::new(self.start().untrusted(), index.untrusted(), self.id()),
@@ -161,8 +174,14 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
         unsafe { Range::new(self.start().untrusted(), end.untrusted(), self.id()) }
     }
 
+    /// Extend the start of this range to the given index.
+    pub fn extend_start<P>(self, index: Index<'id, P>) -> Range<'id, Emptiness> {
+        let start = cmp::min(self.start().erased(), index.erased());
+        unsafe { Range::new(start.untrusted(), self.end().untrusted(), self.id()) }
+    }
+
     /// The empty range at the start and end of this range.
-    pub fn frontiers(&self) -> (Range<'id, Unknown>, Range<'id, Unknown>) {
+    pub fn frontiers(self) -> (Range<'id, Unknown>, Range<'id, Unknown>) {
         (Range::singleton(self.start()), Range::singleton(self.end()))
     }
 }
@@ -191,7 +210,7 @@ impl<'id, Emptiness> Debug for Range<'id, Emptiness> {
 
 impl<'id> Default for Range<'id, Unknown> {
     fn default() -> Self {
-        unsafe { Range::new(0, 0, generativity::Id::new()) }
+        Range::singleton(Index::default())
     }
 }
 
@@ -213,5 +232,13 @@ impl<'id, Emptiness> Hash for Range<'id, Emptiness> {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.start.hash(state);
         self.end.hash(state);
+    }
+}
+
+impl<'id, Emptiness> TryFrom<ops::Range<Index<'id, Emptiness>>> for Range<'id, Unknown> {
+    type Error = ();
+
+    fn try_from(range: ops::Range<Index<'id, Emptiness>>) -> Result<Range<'id, Unknown>, ()> {
+        Ok(unsafe { Range::from(range.try_into()?) })
     }
 }

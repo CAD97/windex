@@ -2,7 +2,10 @@
 use crate::{scope, scope_mut, scope_val};
 use {
     crate::{particle::*, proof::*, traits::*},
-    core::{convert::AsRef, fmt, mem, ops},
+    core::{
+        convert::{AsMut, AsRef},
+        fmt, mem, ops,
+    },
 };
 
 /// A branded container, that allows access only to indices and ranges with
@@ -65,19 +68,58 @@ where
     }
 
     /// This container without the branding.
-    // FUTURE: Does this need the `Array: TrustedContainerMut` bound?
-    //         For now, it's there as an overly cautious measure.
-    pub fn untrusted_mut(&mut self) -> &mut Array
-    where
-        Array: TrustedContainerMut,
+    ///
+    /// # Safety
+    ///
+    /// Any indices of the array cannot be invalidated. i.e., variable size
+    /// collections such as `Vec` and `String` can be grown or modified, but
+    /// cannot remove any elements.
+    pub unsafe fn untrusted_mut(&mut self) -> &mut Array
     {
         &mut self.array
     }
 
     /// This container without the branding.
+    ///
+    /// # Note
+    ///
+    /// The returned array is required to be valid for `'id`, i.e. the entire
+    /// indexing scope. This is to prevent you from writing a safe version of
+    /// [`untrusted_mut`](`Container::untrusted_mut`):
+    ///
+    /// ```rust,compile_fail
+    /// # use windex::scope_val;
+    /// let v = vec![0];
+    /// scope_val(v, |mut v| {
+    ///     let ix = v.vet(0).unwrap();
+    ///     let r = v.as_ref_mut().into_untrusted();
+    ///     r.clear();
+    ///     // ix is now invalid logically but not statically
+    /// })
+    /// ```
+    ///
+    /// ```text
+    /// error[E0597]: `v` does not live long enough
+    ///   -->
+    ///    |
+    /// 2  | scope_val(v, |mut v| {
+    ///    |               ----- has type `windex::container::Container<'1, std::vec::Vec<i32>>`
+    /// 3  |     let ix = v.vet(0).unwrap();
+    /// 4  |     let r = v.as_ref_mut().into_untrusted();
+    ///    |             ^-------------
+    ///    |             |
+    ///    |             borrowed value does not live long enough
+    ///    |             argument requires that `v` is borrowed for `'1`
+    /// ...
+    /// 7  | })
+    ///    | - `v` dropped here while still borrowed
+    /// ```
+    ///
+    /// In effect, this means that you can only `into_untrusted` on the
+    /// container given to you from your `scope`/`scope_[mut|val]` call.
     pub fn into_untrusted(self) -> Array
     where
-        Array: Sized,
+        Array: Sized + 'id,
     {
         self.array
     }
@@ -94,7 +136,7 @@ where
 
     /// The full range of the container.
     pub fn as_range(&self) -> perfect::Range<'id, Unknown> {
-        unsafe { perfect::Range::new(0, self.len(), self.id) }
+        unsafe { perfect::Range::new(0, self.len(), self.id()) }
     }
 
     /// The start index of the container.
@@ -109,15 +151,13 @@ where
 
     /// Take a internally trusted reference to the container.
     pub fn as_ref(&self) -> Container<'id, &'_ Array> {
-        unsafe { mem::transmute(&*self) }
+        unsafe { mem::transmute(&self.array) }
     }
 
     /// Take an internally trusted mutable reference to the container.
     pub fn as_ref_mut(&mut self) -> Container<'id, &'_ mut Array>
-    where
-        Array: TrustedContainerMut,
     {
-        unsafe { mem::transmute(&mut *self) }
+        unsafe { mem::transmute(&mut self.array) }
     }
 
     /// Convert this container into a simple container of the representational
@@ -137,10 +177,29 @@ where
     ) -> Container<'id, &'_ [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>
     where
         Array: AsRef<[<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>,
+        for<'a> &'a [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]:
+            TrustedContainer,
     {
         Container {
             id: self.id,
             array: self.array.as_ref(),
+        }
+    }
+
+    /// Convert this container into a mutable simple container of the
+    /// representational unit slice. See [`simple`](`Container::simple`)
+    /// for more details.
+    pub fn simple_mut(
+        &mut self,
+    ) -> Container<'id, &'_ mut [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>
+    where
+        Array: AsMut<[<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>,
+        for<'a> &'a mut [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]:
+            TrustedContainerMut,
+    {
+        Container {
+            id: self.id,
+            array: self.array.as_mut(),
         }
     }
 }
@@ -151,8 +210,8 @@ where
     Array: TrustedContainer,
 {
     /// Vet a particle for being inbounds and indexable to this container.
-    pub fn vet<V: Vettable<'id>>(&self, particle: V) -> Result<V::Vetted, IndexError> {
-        particle.vet(self)
+    pub fn vet<V: Vettable<'id>>(&self, particle: V) -> Result<V::ContainerVetted, IndexError> {
+        particle.vet_in_container(self)
     }
 
     /// Vet an index for being valid, including the one-past-the-end index.

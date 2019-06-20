@@ -5,6 +5,7 @@ use {
     },
     core::{
         cmp,
+        convert::{TryFrom, TryInto},
         fmt::{self, Debug},
         hash::{self, Hash},
         ops,
@@ -39,7 +40,7 @@ impl<'id> Range<'id, Unknown> {
     }
 }
 
-/// Downgrade
+/// Proof manipulation
 impl<'id, Emptiness> Range<'id, Emptiness> {
     /// This range without the brand.
     pub fn untrusted(self) -> ops::Range<u32> {
@@ -49,6 +50,15 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
     /// This range without the emptiness proof.
     pub fn erased(self) -> Range<'id, Unknown> {
         unsafe { Range::from(self.simple.erased()) }
+    }
+
+    /// This range with a proof of non-emptiness.
+    pub fn nonempty(self) -> Option<Range<'id, NonEmpty>> {
+        if !self.is_empty() {
+            Some(unsafe { Range::new(self.start().untrusted(), self.end().untrusted(), self.id()) })
+        } else {
+            None
+        }
     }
 
     /// This range in simple manipulation mode.
@@ -82,13 +92,6 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
     /// Is this index in this range?
     pub fn contains<P>(self, index: Index<'id, P>) -> bool {
         self.start() <= index && index < self.end()
-    }
-
-    /// Vet an untrusted index for being in range.
-    ///
-    /// (Returns a simple index, as it isn't guaranteed on an item boundary.)
-    pub fn vet(self, ix: u32) -> Option<simple::Index<'id, Emptiness>> {
-        self.simple.vet(ix)
     }
 }
 
@@ -153,8 +156,14 @@ impl<'id, Emptiness> Range<'id, Emptiness> {
         unsafe { Range::new(self.start().untrusted(), end.untrusted(), self.id()) }
     }
 
+    /// Extend the start of this range to the given index.
+    pub fn extend_start<P>(self, index: Index<'id, P>) -> Range<'id, Emptiness> {
+        let start = cmp::min(self.start().erased(), index.erased());
+        unsafe { Range::new(start.untrusted(), self.end().untrusted(), self.id()) }
+    }
+
     /// The empty range at the start and end of this range.
-    pub fn frontiers(&self) -> (Range<'id, Unknown>, Range<'id, Unknown>) {
+    pub fn frontiers(self) -> (Range<'id, Unknown>, Range<'id, Unknown>) {
         (Range::singleton(self.start()), Range::singleton(self.end()))
     }
 }
@@ -177,7 +186,7 @@ impl<'id, Emptiness> Debug for Range<'id, Emptiness> {
 
 impl<'id> Default for Range<'id, Unknown> {
     fn default() -> Self {
-        unsafe { Range::new(0, 0, generativity::Id::new()) }
+        Range::singleton(Index::default())
     }
 }
 
@@ -198,5 +207,13 @@ impl<'id, 'jd, Emptiness, P> PartialEq<simple::Range<'jd, P>> for Range<'id, Emp
 impl<'id, Emptiness> Hash for Range<'id, Emptiness> {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         self.simple.hash(state)
+    }
+}
+
+impl<'id, Emptiness> TryFrom<ops::Range<Index<'id, Emptiness>>> for Range<'id, Unknown> {
+    type Error = ();
+
+    fn try_from(range: ops::Range<Index<'id, Emptiness>>) -> Result<Range<'id, Unknown>, ()> {
+        Ok(unsafe { Range::from(range.try_into()?) })
     }
 }

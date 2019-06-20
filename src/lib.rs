@@ -38,7 +38,6 @@ pub mod traits;
 use {crate::traits::TrustedContainer, core::ops, debug_unreachable::debug_unreachable};
 
 pub use crate::container::Container;
-use crate::traits::TrustedContainerMut;
 
 /// Create an indexing scope for a borrowed container.
 ///
@@ -67,11 +66,9 @@ where
 /// Indices and ranges branded with `'id` cannot leave the closure. The
 /// container can only be trusted when accessed through the `Container`
 /// wrapper passed as the first argument to the indexing scope.
-// FUTURE: Does this need the `Array: TrustedContainerMut` bound?
-//         For now, it's there as an overly cautious measure.
 pub fn scope_mut<Array: ?Sized, F, Out>(array: &mut Array, f: F) -> Out
 where
-    Array: TrustedContainerMut,
+    Array: TrustedContainer,
     F: for<'id> FnOnce(&'id Container<'id, Array>) -> Out,
 {
     generativity::make_guard!(guard);
@@ -98,8 +95,13 @@ where
 
 /// A utf8 string slice of exactly one codepoint.
 ///
-/// This type is two pointers large, so you'll probably want to read the
+/// This type is two `usize` large, so you'll probably want to read the
 /// underlying `char` out with [`Character::as_char`] as soon as possible.
+//
+// Potential optimization: use a thin pointer to `u8` and determine the length
+// from the leading UTF-8 byte. We don't do that now such that the structure
+// is properly unsized, and there's no potential for misuse where `&Character`
+// can be accidentally created other than unsafely casting from `&str`.
 #[repr(transparent)]
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Character(str);

@@ -5,13 +5,14 @@ use {
     },
     core::{
         cmp,
-        convert::{TryFrom, TryInto},
+        convert::TryFrom,
         fmt::{self, Debug},
         hash::{self, Hash},
         marker::PhantomData,
         ops,
     },
 };
+use core::convert::TryInto;
 
 pub struct Range<'id, Emptiness = Unknown> {
     start: Index<'id, Unknown>,
@@ -239,6 +240,25 @@ impl<'id, Emptiness> TryFrom<ops::Range<Index<'id, Emptiness>>> for Range<'id, U
     type Error = ();
 
     fn try_from(range: ops::Range<Index<'id, Emptiness>>) -> Result<Range<'id, Unknown>, ()> {
-        Ok(unsafe { Range::from(range.try_into()?) })
+        if range.start < range.end {
+            Ok(unsafe {
+                Range::new(
+                    range.start.untrusted(),
+                    range.end.untrusted(),
+                    range.start.id(),
+                )
+            })
+        } else {
+            Err(())
+        }
+    }
+}
+
+
+impl<'id, Emptiness> TryFrom<ops::Range<perfect::Index<'id, Emptiness>>> for Range<'id, Unknown> {
+    type Error = ();
+
+    fn try_from(range: ops::Range<perfect::Index<'id, Emptiness>>) -> Result<Range<'id, Unknown>, ()> {
+        (range.start.simple()..range.end.simple()).try_into()
     }
 }

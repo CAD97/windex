@@ -7,6 +7,7 @@ use {
         fmt, mem, ops,
     },
 };
+use crate::traits::TrustedContainer;
 
 /// A branded container, that allows access only to indices and ranges with
 /// the exact same brand in the `'id` parameter.
@@ -160,48 +161,21 @@ where
         unsafe { mem::transmute(&mut self.array) }
     }
 
-    /// Convert this container into a simple container of the representational
-    /// unit slice. The lifetime of the returned container _must_ be tied to
-    /// the borrow here to enforce that the backing array is not mutated; if
-    /// you want `Container<'id, &'id str>` and `Container<'id, &'id [u8]>`,
-    /// use [`scope`] to get a `&'id Container<'id, str>`, use `simple` to get
-    /// `Container<'id, &'id [u8]>`, then call [`as_ref`][`Container::as_ref`]
-    /// to get `Container<'id, &'id [u8]>` and `Container<'id, &'id str>`.
-    ///
-    /// For owned values, Rust cannot support holding two separate views of
-    /// the same value where one of which is owned or mutable. In this case,
-    /// you will need to have transient sibling immutable views and batch
-    /// mutability. (`Container<'id, &'a str>`, `Container<'id, &'a [u8]>`)
-    pub fn simple(
-        &self,
-    ) -> Container<'id, &'_ [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>
-    where
-        Array: AsRef<[<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>,
-        for<'a> &'a [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]:
-            TrustedContainer,
-    {
-        Container {
-            id: self.id,
-            array: self.array.as_ref(),
-        }
-    }
-
-    /// Convert this container into a mutable simple container of the
-    /// representational unit slice. See [`simple`](`Container::simple`)
-    /// for more details.
-    pub fn simple_mut(
-        &mut self,
-    ) -> Container<'id, &'_ mut [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>
-    where
-        Array: AsMut<[<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>,
-        for<'a> &'a mut [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]:
-            TrustedContainerMut,
-    {
-        Container {
-            id: self.id,
-            array: self.array.as_mut(),
-        }
-    }
+    // Here lies the grave of
+    // ```
+    // fn simple(
+    //   &self
+    // ) -> Container<'id, &'_ [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>
+    // where
+    //   Array: AsRef<[<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]>,
+    //   for<'a> &'a [<<Array as TrustedContainer>::Item as TrustedItem<Array>>::Unit]:
+    //     TrustedContainer
+    // ```
+    //
+    // As clever as it is, it is 💥unsound💥! If you can have two container views alive where one is
+    // "simple" and one requires "perfect" bookkeeping and they have the same id, then the simple
+    // one can create perfect particles that are invalid for the perfect one and are between items.
+    // Container views with different types _must_ use different brands. Reborrow and scope again.
 }
 
 /// Upgrading particles

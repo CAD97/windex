@@ -1,6 +1,9 @@
 This file details the translation from bluss/indexing to cad97/windex.
 Not every function has a direct translation, but all functionality
 should be available in some form. Pointer particles are omitted.
+(In fact, I'm convinced they're not sound in the current Stacked Borrows
+proposal, but that may change, as the issue is identical to `Pin<&mut>`
+as it's "upgrading" a pointer/reference by having the parent `&mut` lock.)
 
 # `Range`
 

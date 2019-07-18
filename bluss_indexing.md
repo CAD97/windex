@@ -15,10 +15,10 @@ as it's "upgrading" a pointer/reference by having the parent `&mut` lock.)
   - `nonempty(&self) -> Result<Range<NonEmpty>, _>` ⟹
     `nonempty(self) -> Option<Range<NonEmpty>>`
   - `start(&self) -> usize` ⟹
-    `start(self) -> Index` ▷ `untrusted(self) -> u32` or
+    `start(self) -> Index` ▷ `untrusted(self) -> u32` or  
     `untrusted(self) -> ops::Range<u32>` ▷ `.start: u32`
   - `end(&self) -> usize` ⟹
-    `end(self) -> Index` ▷ `untrusted(self) -> u32` or
+    `end(self) -> Index` ▷ `untrusted(self) -> u32` or  
     `untrusted(self) -> ops::Range<u32>` ▷ `.end: u32`
   - `split_at(&self, usize) -> (Range<Unknown>, Range<Unknown>)` ⟹
     `split_at(self, Index) -> Option<(Range<Unknown>, Range<P>)>`

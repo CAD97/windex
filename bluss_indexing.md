@@ -42,7 +42,7 @@ as it's "upgrading" a pointer/reference by having the parent `&mut` lock.)
 ## Compatible with `perfect::Range` with a `Container` reference
 
 - `Range<P>`
-  - `split_in_half(self)` -> `(Range<Unknown>, Range<P>)` ⟹ TODO
+  - `split_in_half(self) -> (Range<Unknown>, Range<P>)` ⟹ TODO
   - `subdivide(&self, usize) -> impl Iterator<Range<NonEmpty>>` ⟹ TODO
   - `forward_by(&self, &mut Index<NonEmpty>, usize) -> bool` ⟹ TODO
   - `forward_range_by(&self, Range, usize) -> Range<Unknown>` ⟹ TODO
